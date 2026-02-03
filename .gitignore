@@ -36,3 +36,11 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### Application Config ###
+# Contains sensitive credentials - never commit!
+config.properties
+
+### Progress Files ###
+# Generated during runtime for resume capability
+progress_*.json

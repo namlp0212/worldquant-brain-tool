@@ -24,6 +24,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 
+import demo.webapp.ConfigLoader;
+import demo.webapp.ProgressTracker;
+import demo.webapp.SessionValidator;
+
 import static demo.webapp.Constant.COOKIE;
 
 public class RegularAlphaUtils {
@@ -103,32 +107,29 @@ public class RegularAlphaUtils {
     }
 
     public static List<String> getAlphaIdsByFilter() throws IOException, InterruptedException {
+        // Load filter settings from config
+        String region = ConfigLoader.getRegularFilterRegion();
+        String dateFrom = ConfigLoader.getRegularFilterDateFrom();
+        String dateTo = ConfigLoader.getRegularFilterDateTo();
+        double minFitness = ConfigLoader.getRegularFilterMinFitness();
+        int limit = ConfigLoader.getRegularFilterLimit();
+        String filterStatus = ConfigLoader.getRegularFilterStatus();
+        boolean favorite = ConfigLoader.getRegularFilterFavorite();
+
         String url = "https://api.worldquantbrain.com/users/self/alphas" +
-                "?limit=20" +
+                "?limit=" + limit +
                 "&offset=0" +
-                "&status=UNSUBMITTED%1FIS_FAIL" +
-                "&dateCreated%3E=2026-01-11T00:00:00-05:00" +
-                "&dateCreated%3C2026-02-01T00:00:00-05:00" +
-                "&favorite=false" +
+                "&status=" + filterStatus +
+                "&dateCreated%3E=" + dateFrom +
+                "&dateCreated%3C" + dateTo +
                 "&type=REGULAR" +
-                "&settings.region=JPN" +
-                "&is.fitness%3E2.2" +
+                "&settings.region=" + region +
+                "&is.fitness%3E=" + minFitness +
+                "&favorite=" + favorite +
                 "&order=-is.fitness" +
                 "&hidden=false";
 
-//        String url = "https://api.worldquantbrain.com/users/self/alphas" +
-//                "?limit=100" +
-//                "&offset=0" +
-//                "&status=UNSUBMITTED%1FIS_FAIL" +
-//                "&dateCreated%3E=2026-01-11T00:00:00-05:00" +
-//                "&dateCreated%3C2026-02-01T00:00:00-05:00" +
-//                "&favorite=false" +
-//                "&settings.region=JPN" +
-//                "&is.fitness%3C2.5" +
-//                "&is.fitness%3E=2" +
-//                "&type=REGULAR" +
-//                "&order=-is.fitness" +
-//                "&hidden=false";
+        System.out.println("Filter URL: " + url);
 
         HttpClient client = HttpClient.newHttpClient();
 
@@ -266,17 +267,17 @@ public class RegularAlphaUtils {
 
     private static void sendResultByMail(String result) {
         EmailSender emailSender = new EmailSender(
-                "smtp.gmail.com",
-                587,
-                "namlp0212@gmail.com",
-                "cgpv mcoj shed raep"
+                ConfigLoader.getSmtpHost(),
+                ConfigLoader.getSmtpPort(),
+                ConfigLoader.getSmtpUsername(),
+                ConfigLoader.getSmtpPassword()
         );
 
         Date now = new Date();
         result = "Result " + now + "\n" + result;
         try {
             emailSender.sendEmail(
-                    "namlp0212@gmail.com",
+                    ConfigLoader.getEmailRecipient(),
                     "Result of run REGULAR alpha: ",
                     result
             );
@@ -287,36 +288,82 @@ public class RegularAlphaUtils {
     }
 
     public static boolean submitAlpha(String alphaId) throws IOException, InterruptedException {
+        System.out.println("---- START SUBMIT ALPHA " + alphaId + " -----");
+
         String url = "https://api.worldquantbrain.com/alphas/" + alphaId + "/submit";
 
-        HttpClient client = HttpClient.newHttpClient();
-
-        HttpRequest request = HttpRequest.newBuilder()
-                .uri(URI.create(url))
-                .POST(HttpRequest.BodyPublishers.noBody())
-                .header("Accept", "application/json;version=2.0")
-                .header("Content-Type", "application/json")
-                .header("Origin", "https://platform.worldquantbrain.com")
-                .header("Referer", "https://platform.worldquantbrain.com/")
-                .header("User-Agent", "Mozilla/5.0")
-                .header("Cookie", COOKIE)
+        HttpClient client = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
                 .build();
 
-        HttpResponse<String> response =
-                client.send(request, HttpResponse.BodyHandlers.ofString());
+        int maxRetry = 100;
+        int retry = 0;
+        int waitMs = 2000; // 2s initial wait
 
-        int status = response.statusCode();
+        while (retry < maxRetry) {
+            HttpRequest request = HttpRequest.newBuilder()
+                    .uri(URI.create(url))
+                    .timeout(Duration.ofSeconds(20))
+                    .POST(HttpRequest.BodyPublishers.noBody())
+                    .header("Accept", "application/json;version=2.0")
+                    .header("Content-Type", "application/json")
+                    .header("Origin", "https://platform.worldquantbrain.com")
+                    .header("Referer", "https://platform.worldquantbrain.com/")
+                    .header("User-Agent", "Mozilla/5.0")
+                    .header("Cookie", COOKIE)
+                    .build();
 
-        if (status == 200) {
-            System.out.println("✔ SUBMIT ALPHA " + alphaId + " SUCCESS ");
-            System.out.println("Body: " + response.body());
-            return true;
-        } else {
-            System.out.println("❌ SUBMIT ALPHA " + alphaId + " FAIL ");
-            System.out.println("Body: " + response.body());
-            return false;
+            HttpResponse<String> response =
+                    client.send(request, HttpResponse.BodyHandlers.ofString());
+
+            int status = response.statusCode();
+            String body = response.body();
+
+            System.out.println("Submit alpha " + alphaId
+                    + " | Attempt " + (retry + 1)
+                    + " | Status " + status);
+
+            // SUCCESS
+            if (status == 200 || status == 201) {
+                System.out.println("✔ SUBMIT ALPHA " + alphaId + " SUCCESS");
+                System.out.println("Body: " + body);
+                return true;
+            }
+
+            // RATE LIMIT - retry with backoff
+            if (status == 429) {
+                System.out.println("Rate limited. Retry after " + waitMs + "ms...");
+                Thread.sleep(waitMs);
+                waitMs *= 2;
+                retry++;
+                continue;
+            }
+
+            // SERVER ERROR (5xx) - retry with backoff
+            if (status >= 500 && status < 600) {
+                System.out.println("Server error. Retry after " + waitMs + "ms...");
+                Thread.sleep(waitMs);
+                waitMs *= 2;
+                retry++;
+                continue;
+            }
+
+            // CLIENT ERROR (4xx except 429) - non-retryable, fail immediately
+            if (status >= 400 && status < 500) {
+                System.out.println("❌ SUBMIT ALPHA " + alphaId + " FAIL - Client error: " + status);
+                System.out.println("Body: " + body);
+                return false;
+            }
+
+            // Other unexpected status - retry
+            System.out.println("Unexpected status " + status + ". Retry after " + waitMs + "ms...");
+            Thread.sleep(waitMs);
+            waitMs *= 2;
+            retry++;
         }
 
+        System.out.println("❌ SUBMIT ALPHA " + alphaId + " FAIL after " + maxRetry + " retries");
+        return false;
     }
 
     public static void setFavoriteForAlpha(String alphaId) throws IOException, InterruptedException {
@@ -385,10 +432,37 @@ public class RegularAlphaUtils {
     }
 
     public static void main(String[] args) throws IOException, InterruptedException {
-        ExecutorService executor = Executors.newFixedThreadPool(3);
-// 👉 3 threads là an toàn cho WorldQuant Brain
+        // Check for --clear flag to reset progress
+        boolean clearProgress = args.length > 0 && args[0].equals("--clear");
+
+        // Validate session before starting
+        try {
+            SessionValidator.validateOrThrow();
+        } catch (SessionValidator.SessionInvalidException e) {
+            System.err.println("Cannot proceed: " + e.getMessage());
+            return;
+        }
+
+        // Initialize progress tracker
+        ProgressTracker progress = new ProgressTracker("REGULAR");
+
+        if (clearProgress) {
+            System.out.println("Clearing previous progress...");
+            progress.clear();
+            progress = new ProgressTracker("REGULAR");
+        }
+
+        if (progress.hasExistingProgress()) {
+            System.out.println("Resuming from previous progress...");
+            progress.printProgress();
+        }
+
+        ExecutorService executor = Executors.newFixedThreadPool(ConfigLoader.getThreadPoolSize());
 
         Map<String, Double> mapProductCorrByAlphaId = Collections.synchronizedMap(new HashMap<>());
+
+        // Load cached correlations from progress
+        mapProductCorrByAlphaId.putAll(progress.getAllCorrelations());
 
         System.out.println("------------------ START GET LIST ALPHA ID -------------------------");
         List<String> alphaIds = getAlphaIdsByFilter();
@@ -400,33 +474,68 @@ public class RegularAlphaUtils {
             return;
         }
 
-        System.out.println("Alpha list: " + alphaIds.size());
+        System.out.println("Alpha list from API: " + alphaIds.size());
+
+        // Initialize progress tracking for all alphas
+        progress.initializeAlphas(alphaIds);
+
+        // Filter out already processed alphas
+        List<String> pendingAlphaIds = progress.getPendingAlphas(alphaIds);
+        System.out.println("Alphas to process (excluding already completed): " + pendingAlphaIds.size());
+
+        if (pendingAlphaIds.isEmpty()) {
+            System.out.println("All alphas already processed. Use --clear flag to start fresh.");
+            executor.shutdown();
+
+            // Still proceed to submission phase for any unsubmitted alphas
+            submitPendingAlphas(progress, mapProductCorrByAlphaId);
+            return;
+        }
 
         List<Future<?>> futures = new ArrayList<>();
+        final ProgressTracker progressFinal = progress;
 
-        for (String alphaId : alphaIds) {
+        for (String alphaId : pendingAlphaIds) {
             Future<?> future = executor.submit(() -> {
                 try {
                     System.out.println("▶ START alpha " + alphaId
                             + " | Thread " + Thread.currentThread().getName());
 
-                    // 1️⃣ set name
-                    setNameForAlpha(alphaId);
+                    // 1️⃣ set name (skip if already done)
+                    if (!progressFinal.isNameSet(alphaId)) {
+                        setNameForAlpha(alphaId);
+                        progressFinal.markNameSet(alphaId);
+                    } else {
+                        System.out.println("Skipping name set for " + alphaId + " (already done)");
+                    }
 
-                    // 2️⃣ get product corr
-                    Double productCorr = getProdCorrOfAlpha(alphaId);
+                    // 2️⃣ get product corr (skip if already done)
+                    Double productCorr;
+                    if (!progressFinal.isCorrelationChecked(alphaId)) {
+                        productCorr = getProdCorrOfAlpha(alphaId);
+                        progressFinal.recordCorrelation(alphaId, productCorr);
+                    } else {
+                        productCorr = progressFinal.getCorrelation(alphaId);
+                        System.out.println("Using cached correlation for " + alphaId + ": " + productCorr);
+                    }
 
                     mapProductCorrByAlphaId.put(alphaId, productCorr);
 
                     System.out.println("✔ DONE alpha " + alphaId
                             + " | corr = " + productCorr);
 
-                    if (productCorr != null && productCorr >= 0.7) {
+                    // 3️⃣ set favorite if correlation >= 0.7
+                    if (productCorr != null && productCorr >= ConfigLoader.getMinCorrelation()) {
                         setFavoriteForAlpha(alphaId);
+                        progressFinal.markFavorited(alphaId);
                     }
+
+                    progressFinal.markCompleted(alphaId);
+
                 } catch (Exception e) {
                     System.err.println("❌ ERROR alpha " + alphaId);
                     mapProductCorrByAlphaId.put(alphaId, null);
+                    progressFinal.markFailed(alphaId, e.getMessage());
                     e.printStackTrace();
                 }
             });
@@ -434,7 +543,7 @@ public class RegularAlphaUtils {
             futures.add(future);
         }
 
-// ⏳ Đợi tất cả task hoàn thành
+        // Wait for all tasks to complete
         for (Future<?> f : futures) {
             try {
                 f.get();
@@ -443,38 +552,85 @@ public class RegularAlphaUtils {
             }
         }
 
-// 🔚 Shutdown thread pool
+        // Shutdown thread pool
         executor.shutdown();
 
-// 📊 Print kết quả
-        System.out.println("--------------- PRODUCT CORR RESULT ----------------");
+        // Print progress summary
+        progress.printProgress();
+
+        // Print correlation results (only alphas with corr < 0.7)
+        double minCorrelation = ConfigLoader.getMinCorrelation();
+        System.out.println("--------------- PRODUCT CORR RESULT (corr < " + minCorrelation + ") ----------------");
 
         StringBuilder result = new StringBuilder();
 
         mapProductCorrByAlphaId.entrySet().stream()
-                        .sorted(Map.Entry.comparingByValue(
-                                Comparator.nullsFirst(Double::compareTo)
-                        ))
-                                .forEach(e -> {
-                                    result.append("Alpha: " + e.getKey() + ", Product corr = " + e.getValue() + "\n");
-                                    System.out.println("Alpha: " + e.getKey() + ", Product corr = " + e.getValue());
-                                });
+                .filter(e -> e.getValue() == null || e.getValue() < minCorrelation)
+                .sorted(Map.Entry.comparingByValue(
+                        Comparator.nullsFirst(Double::compareTo)
+                ))
+                .forEach(e -> {
+                    result.append("Alpha: " + e.getKey() + ", Product corr = " + e.getValue() + "\n");
+                    System.out.println("Alpha: " + e.getKey() + ", Product corr = " + e.getValue());
+                });
+
+        if (result.isEmpty()) {
+            System.out.println("No alphas with correlation < " + minCorrelation);
+        }
 
         sendResultByMail(result.toString());
 
-//        List<String> sortedAlphaIds =
-//                mapProductCorrByAlphaId.entrySet()
-//                        .stream()
-//                        .sorted(Map.Entry.comparingByValue()) // ASC
-//                        .map(Map.Entry::getKey)
-//                        .collect(Collectors.toList());
-//
-//        for (String alphaId : sortedAlphaIds) {
-//            submitAlpha(alphaId);
-//        }
+        // Submit alphas
+        submitPendingAlphas(progress, mapProductCorrByAlphaId);
+    }
 
-//        mapProductCorrByAlphaId.forEach((k, v) ->
-//                System.out.println("Alpha: " + k + ", Product corr = " + v)
-//        );
+    private static void submitPendingAlphas(ProgressTracker progress, Map<String, Double> mapProductCorrByAlphaId)
+            throws IOException, InterruptedException {
+        // Get alphas that need submission
+        List<String> alphasToSubmit = progress.getAlphasToSubmit();
+
+        if (alphasToSubmit.isEmpty()) {
+            System.out.println("No alphas pending submission.");
+            return;
+        }
+
+        double minCorrelation = ConfigLoader.getMinCorrelation();
+
+        // Filter: Only submit alphas with correlation < 0.7 (or configured threshold)
+        // Skip alphas with correlation >= 0.7
+        List<String> filteredAlphas = alphasToSubmit.stream()
+                .filter(id -> {
+                    Double corr = mapProductCorrByAlphaId.get(id);
+                    if (corr == null) {
+                        return true; // Submit if correlation unknown
+                    }
+                    if (corr >= minCorrelation) {
+                        System.out.println("Skipping submission for " + id + " (corr=" + corr + " >= " + minCorrelation + ")");
+                        progress.markSkipped(id, "Correlation >= " + minCorrelation);
+                        return false;
+                    }
+                    return true;
+                })
+                .collect(Collectors.toList());
+
+        if (filteredAlphas.isEmpty()) {
+            System.out.println("No alphas to submit (all have correlation >= " + minCorrelation + ")");
+            return;
+        }
+
+        System.out.println("--------------- SUBMITTING ALPHAS ----------------");
+        System.out.println("Alphas to submit (corr < " + minCorrelation + "): " + filteredAlphas.size());
+
+        // Sort by correlation (ascending)
+        List<String> sortedAlphaIds = filteredAlphas.stream()
+                .sorted(Comparator.comparing(
+                        id -> mapProductCorrByAlphaId.getOrDefault(id, Double.MAX_VALUE)
+                ))
+                .collect(Collectors.toList());
+
+        for (String alphaId : sortedAlphaIds) {
+            boolean success = submitAlpha(alphaId);
+            progress.markSubmitted(alphaId, success);
+        }
     }
 }

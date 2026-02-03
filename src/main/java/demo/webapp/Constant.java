@@ -1,5 +1,18 @@
 package demo.webapp;
 
 public class Constant {
-    public static final String COOKIE = "_fbp=fb.1.1768491272790.845570315671097657; _ga_9RN6WVT1K1=GS2.1.s1768731975$o8$g1$t1768732016$j19$l0$h0; t=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJqdGkiOiJDdTd0NGF2eFRSQXZ0dVR0VWhLOHhyRzdUVjVQbktlMiIsImV4cCI6MTc2ODc0NjQxNn0.K-ZUs1E6kC3F_-11BqlrsnELyD8Q8v2Rdn4QkFfsG9c; _ga=GA1.1.17684912699356beb9b482ac938; _gcl_au=1.1.800052716.1768491272";
+    // Cookie is loaded dynamically from config.properties via ConfigLoader
+    // Use getCookie() method to always get the latest value
+    public static String getCookie() {
+        return ConfigLoader.getCookie();
+    }
+
+    // For backward compatibility - but prefer using getCookie() method
+    // Note: This will be updated when ConfigLoader.reload() is called
+    public static String COOKIE = ConfigLoader.getCookie();
+
+    // Call this after updating cookie to refresh the cached value
+    public static void refreshCookie() {
+        COOKIE = ConfigLoader.getCookie();
+    }
 }

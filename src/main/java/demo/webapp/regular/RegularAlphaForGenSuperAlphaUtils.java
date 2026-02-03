@@ -22,6 +22,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.stream.Collectors;
+import demo.webapp.ConfigLoader;
+import demo.webapp.ProgressTracker;
+import demo.webapp.SessionValidator;
+
 import static demo.webapp.Constant.COOKIE;
 
 public class RegularAlphaForGenSuperAlphaUtils {
@@ -106,7 +110,7 @@ public class RegularAlphaForGenSuperAlphaUtils {
                 "?limit=100" +
                 "&offset=100" +
                 "&status!=UNSUBMITTED%1FIS-FAIL" +
-                "&settings.region=ASI" +
+                "&settings.region=IND" +
                 "&type=REGULAR" +
                 "&order=is.prodCorrelation" +
                 "&hidden=false";
@@ -248,17 +252,17 @@ public class RegularAlphaForGenSuperAlphaUtils {
 
     private static void sendResultByMail(String result) {
         EmailSender emailSender = new EmailSender(
-                "smtp.gmail.com",
-                587,
-                "namlp0212@gmail.com",
-                "cgpv mcoj shed raep"
+                ConfigLoader.getSmtpHost(),
+                ConfigLoader.getSmtpPort(),
+                ConfigLoader.getSmtpUsername(),
+                ConfigLoader.getSmtpPassword()
         );
 
         Date now = new Date();
         result = "Result " + now + "\n" + result;
         try {
             emailSender.sendEmail(
-                    "namlp0212@gmail.com",
+                    ConfigLoader.getEmailRecipient(),
                     "Result of run REGULAR alpha: ",
                     result
             );
@@ -302,8 +306,32 @@ public class RegularAlphaForGenSuperAlphaUtils {
     }
 
     public static void main(String[] args) throws IOException, InterruptedException {
-        ExecutorService executor = Executors.newFixedThreadPool(3);
-// 👉 3 threads là an toàn cho WorldQuant Brain
+        // Check for --clear flag to reset progress
+        boolean clearProgress = args.length > 0 && args[0].equals("--clear");
+
+        // Validate session before starting
+        try {
+            SessionValidator.validateOrThrow();
+        } catch (SessionValidator.SessionInvalidException e) {
+            System.err.println("Cannot proceed: " + e.getMessage());
+            return;
+        }
+
+        // Initialize progress tracker
+        ProgressTracker progress = new ProgressTracker("REGULAR_GEN_SUPER");
+
+        if (clearProgress) {
+            System.out.println("Clearing previous progress...");
+            progress.clear();
+            progress = new ProgressTracker("REGULAR_GEN_SUPER");
+        }
+
+        if (progress.hasExistingProgress()) {
+            System.out.println("Resuming from previous progress...");
+            progress.printProgress();
+        }
+
+        ExecutorService executor = Executors.newFixedThreadPool(ConfigLoader.getThreadPoolSize());
 
         Map<String, Double> mapProductCorrByAlphaId = Collections.synchronizedMap(new HashMap<>());
 
@@ -317,25 +345,47 @@ public class RegularAlphaForGenSuperAlphaUtils {
             return;
         }
 
-        System.out.println("Alpha list: " + alphaIds.size());
+        System.out.println("Alpha list from API: " + alphaIds.size());
+
+        // Initialize progress tracking for all alphas
+        progress.initializeAlphas(alphaIds);
+
+        // Filter out already processed alphas
+        List<String> pendingAlphaIds = progress.getPendingAlphas(alphaIds);
+        System.out.println("Alphas to process (excluding already completed): " + pendingAlphaIds.size());
+
+        if (pendingAlphaIds.isEmpty()) {
+            System.out.println("All alphas already processed. Use --clear flag to start fresh.");
+            executor.shutdown();
+            return;
+        }
 
         List<Future<?>> futures = new ArrayList<>();
+        final ProgressTracker progressFinal = progress;
 
-        for (String alphaId : alphaIds) {
+        for (String alphaId : pendingAlphaIds) {
             Future<?> future = executor.submit(() -> {
                 try {
                     System.out.println("▶ START alpha " + alphaId
                             + " | Thread " + Thread.currentThread().getName());
 
-                    // 1️⃣ set name
-                    setNameForAlpha(alphaId);
+                    // 1️⃣ set name (skip if already done)
+                    if (!progressFinal.isNameSet(alphaId)) {
+                        setNameForAlpha(alphaId);
+                        progressFinal.markNameSet(alphaId);
+                    } else {
+                        System.out.println("Skipping name set for " + alphaId + " (already done)");
+                    }
+
                     mapProductCorrByAlphaId.put(alphaId, 1.0);
+                    progressFinal.markCompleted(alphaId);
 
                     System.out.println("✔ DONE alpha " + alphaId);
 
                 } catch (Exception e) {
                     System.err.println("❌ ERROR alpha " + alphaId);
                     mapProductCorrByAlphaId.put(alphaId, 0.0);
+                    progressFinal.markFailed(alphaId, e.getMessage());
                     e.printStackTrace();
                 }
             });
@@ -343,7 +393,7 @@ public class RegularAlphaForGenSuperAlphaUtils {
             futures.add(future);
         }
 
-// ⏳ Đợi tất cả task hoàn thành
+        // Wait for all tasks to complete
         for (Future<?> f : futures) {
             try {
                 f.get();
@@ -352,23 +402,26 @@ public class RegularAlphaForGenSuperAlphaUtils {
             }
         }
 
-// 🔚 Shutdown thread pool
+        // Shutdown thread pool
         executor.shutdown();
 
-// 📊 Print kết quả
-        System.out.println("--------------- PRODUCT CORR RESULT ----------------");
+        // Print progress summary
+        progress.printProgress();
+
+        // Print results
+        System.out.println("--------------- RESULT ----------------");
 
         StringBuilder result = new StringBuilder();
 
         mapProductCorrByAlphaId.entrySet().stream()
-                        .sorted(Map.Entry.comparingByValue(
-                                Comparator.nullsFirst(Double::compareTo)
-                        ))
-                                .forEach(e -> {
-                                    if (Objects.equals(1.0, e.getValue())) {
-                                        result.append(e.getKey()).append("\n");
-                                    }
-                                });
+                .sorted(Map.Entry.comparingByValue(
+                        Comparator.nullsFirst(Double::compareTo)
+                ))
+                .forEach(e -> {
+                    if (Objects.equals(1.0, e.getValue())) {
+                        result.append(e.getKey()).append("\n");
+                    }
+                });
 
         sendResultByMail(result.toString());
     }

@@ -1,22 +1,20 @@
 package demo.webapp;
 
 import demo.webapp.regular.EmailSender;
-import java.util.List;
 
 public class Main {
-    private static final String cookie = "";
 
     public static void main(String[] args) {
         EmailSender emailSender = new EmailSender(
-                "smtp.gmail.com",
-                587,
-                "namlp0212@gmail.com",
-                "cgpv mcoj shed raep"
+                ConfigLoader.getSmtpHost(),
+                ConfigLoader.getSmtpPort(),
+                ConfigLoader.getSmtpUsername(),
+                ConfigLoader.getSmtpPassword()
         );
 
         try {
             emailSender.sendEmail(
-                    "namlp0212@gmail.com",
+                    ConfigLoader.getEmailRecipient(),
                     "Library Notification",
                     "Your borrowed book is due tomorrow!"
             );

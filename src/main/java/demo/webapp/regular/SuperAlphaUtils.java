@@ -24,6 +24,10 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
+import demo.webapp.ConfigLoader;
+import demo.webapp.ProgressTracker;
+import demo.webapp.SessionValidator;
+
 import static demo.webapp.Constant.COOKIE;
 
 public class SuperAlphaUtils {
@@ -104,16 +108,15 @@ public class SuperAlphaUtils {
 
     public static List<String> getAlphaIdsByFilter() throws IOException, InterruptedException {
         String url = "https://api.worldquantbrain.com/users/self/alphas" +
-                "?limit=99" +
+                "?limit=10" +
                 "&offset=0" +
                 "&status=UNSUBMITTED%1FIS_FAIL" +
-                "&settings.region=EUR" +
-                "&dateCreated%3E=2026-01-17T00:00:00-05:00" +
-                "&dateCreated%3C2026-02-01T00:00:00-05:00" +
+                "&settings.region=ASI" +
+                "&dateCreated%3E=2026-01-25T00:00:00-05:00" +
+                "&dateCreated%3C2026-02-07T00:00:00-05:00" +
                 "&favorite=false" +
-                "&settings.neutralization=FAST" +
-                "&type=SUPER&order=-dateCreated" +
-                "&hidden=false";
+//                "&settings.neutralization=MARKET" +
+                "&type=SUPER&order=settings.neutralization&hidden=false";
 
         HttpClient client = HttpClient.newHttpClient();
 
@@ -316,17 +319,17 @@ public class SuperAlphaUtils {
 
     public static void sendResultByMail(String subject, String result) {
         EmailSender emailSender = new EmailSender(
-                "smtp.gmail.com",
-                587,
-                "namlp0212@gmail.com",
-                "cgpv mcoj shed raep"
+                ConfigLoader.getSmtpHost(),
+                ConfigLoader.getSmtpPort(),
+                ConfigLoader.getSmtpUsername(),
+                ConfigLoader.getSmtpPassword()
         );
 
         Date now = new Date();
         result = "Result " + now + "\n" + result;
         try {
             emailSender.sendEmail(
-                    "namlp0212@gmail.com",
+                    ConfigLoader.getEmailRecipient(),
                     subject,
                     result
             );
@@ -376,16 +379,42 @@ public class SuperAlphaUtils {
     }
 
     public static void main(String[] args) throws IOException, InterruptedException {
+        // Check for --clear flag to reset progress
+        boolean clearProgress = args.length > 0 && args[0].equals("--clear");
+
+        // Validate session before starting
+        try {
+            SessionValidator.validateOrThrow();
+        } catch (SessionValidator.SessionInvalidException e) {
+            System.err.println("Cannot proceed: " + e.getMessage());
+            return;
+        }
+
+        // Initialize progress tracker
+        ProgressTracker progress = new ProgressTracker("SUPER");
+
+        if (clearProgress) {
+            System.out.println("Clearing previous progress...");
+            progress.clear();
+            progress = new ProgressTracker("SUPER");
+        }
+
+        if (progress.hasExistingProgress()) {
+            System.out.println("Resuming from previous progress...");
+            progress.printProgress();
+        }
+
         boolean keepRunning = true;
 
         while (keepRunning) {
-            ExecutorService executor = Executors.newFixedThreadPool(2);
-// 👉 3 threads là an toàn cho WorldQuant Brain
+            ExecutorService executor = Executors.newFixedThreadPool(ConfigLoader.getThreadPoolSize());
 
-//        Map<String, Double> mapProductCorrByAlphaId = new ConcurrentHashMap<>();
             Map<String, Double> mapProductCorrByAlphaId = Collections.synchronizedMap(new HashMap<>());
 
-// Cờ dừng toàn bộ hệ thống khi corr < 0.7
+            // Load cached correlations from progress
+            mapProductCorrByAlphaId.putAll(progress.getAllCorrelations());
+
+            // Stop flag when corr < 0.7 is found
             AtomicBoolean stopFlag = new AtomicBoolean(false);
 
             System.out.println("------------------ START GET LIST ALPHA ID -------------------------");
@@ -398,15 +427,29 @@ public class SuperAlphaUtils {
                 return;
             }
 
-            System.out.println("Alpha list: " + alphaIds.size());
+            System.out.println("Alpha list from API: " + alphaIds.size());
+
+            // Initialize progress tracking for all alphas
+            progress.initializeAlphas(alphaIds);
+
+            // Filter out already processed alphas
+            List<String> pendingAlphaIds = progress.getPendingAlphas(alphaIds);
+            System.out.println("Alphas to process (excluding already completed): " + pendingAlphaIds.size());
+
+            if (pendingAlphaIds.isEmpty()) {
+                System.out.println("All alphas already processed. Use --clear flag to start fresh.");
+                executor.shutdown();
+                break;
+            }
 
             List<Future<?>> futures = new ArrayList<>();
+            final ProgressTracker progressFinal = progress;
 
-            for (String alphaId : alphaIds) {
+            for (String alphaId : pendingAlphaIds) {
 
                 Future<?> future = executor.submit(() -> {
 
-                    // Nếu đã có alpha fail trước đó → skip luôn
+                    // Skip if stop flag is set
                     if (stopFlag.get()) {
                         return;
                     }
@@ -415,29 +458,44 @@ public class SuperAlphaUtils {
                         System.out.println("▶ START alpha " + alphaId
                                 + " | Thread " + Thread.currentThread().getName());
 
-                        // 1️⃣ set name
-                        setNameForAlpha(alphaId);
+                        // 1️⃣ set name (skip if already done)
+                        if (!progressFinal.isNameSet(alphaId)) {
+                            setNameForAlpha(alphaId);
+                            progressFinal.markNameSet(alphaId);
+                        } else {
+                            System.out.println("Skipping name set for " + alphaId + " (already done)");
+                        }
 
-                        // 2️⃣ get product corr
-                        Double productCorr = getProdCorrOfAlpha(alphaId);
+                        // 2️⃣ get product corr (skip if already done)
+                        Double productCorr;
+                        if (!progressFinal.isCorrelationChecked(alphaId)) {
+                            productCorr = getProdCorrOfAlpha(alphaId);
+                            progressFinal.recordCorrelation(alphaId, productCorr);
+                        } else {
+                            productCorr = progressFinal.getCorrelation(alphaId);
+                            System.out.println("Using cached correlation for " + alphaId + ": " + productCorr);
+                        }
 
-                        // ❌ Nếu corr < 0.7 → dừng toàn bộ
+                        // If corr < 0.7 -> stop everything and notify
                         if (productCorr != null) {
-                            if (productCorr < 0.7) {
-                                System.err.println("⛔ STOP alpha " + alphaId + " | corr = " + productCorr);
+                            if (productCorr < ConfigLoader.getMinCorrelation()) {
+                                System.err.println("⛔ FOUND LOW CORR alpha " + alphaId + " | corr = " + productCorr);
 
                                 String result = "Alpha " + alphaId + " | corr = " + productCorr;
                                 sendFindAlphaResultByMail(result);
-                                stopFlag.set(true);           // bật cờ dừng
-                                executor.shutdownNow(); // kill các task đang chờ
+                                progressFinal.markCompleted(alphaId);
+                                stopFlag.set(true);
+                                executor.shutdownNow();
                                 System.exit(0);
                                 return;
                             } else {
                                 setFavoriteForAlpha(alphaId);
+                                progressFinal.markFavorited(alphaId);
                             }
                         }
 
                         mapProductCorrByAlphaId.put(alphaId, productCorr);
+                        progressFinal.markCompleted(alphaId);
 
                         System.out.println("✔ DONE alpha " + alphaId
                                 + " | corr = " + productCorr);
@@ -445,6 +503,7 @@ public class SuperAlphaUtils {
                     } catch (Exception e) {
                         System.err.println("❌ ERROR alpha " + alphaId);
                         mapProductCorrByAlphaId.put(alphaId, null);
+                        progressFinal.markFailed(alphaId, e.getMessage());
                         e.printStackTrace();
                     }
                 });
@@ -452,21 +511,24 @@ public class SuperAlphaUtils {
                 futures.add(future);
             }
 
-// ⏳ Đợi các task còn sống hoàn thành
+            // Wait for tasks to complete
             for (Future<?> f : futures) {
                 try {
                     f.get();
                 } catch (CancellationException e) {
-                    // bị cancel do shutdownNow
+                    // Cancelled due to shutdownNow
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
             }
 
-// 🔚 Shutdown pool
+            // Shutdown pool
             executor.shutdown();
 
-// 📊 Print kết quả
+            // Print progress summary
+            progress.printProgress();
+
+            // Print correlation results
             System.out.println("--------------- PRODUCT CORR RESULT ----------------");
 
             StringBuilder result = new StringBuilder();
@@ -482,28 +544,14 @@ public class SuperAlphaUtils {
 
             sendResultByMail(result.toString());
 
+            // Check if any alpha has low correlation -> stop loop
             for (Map.Entry<String, Double> entry : mapProductCorrByAlphaId.entrySet()) {
                 Double productCorr = entry.getValue();
-                if (productCorr != null && productCorr < 0.7) {
+                if (productCorr != null && productCorr < ConfigLoader.getMinCorrelation()) {
                     keepRunning = false;
                     break;
                 }
             }
-
-//        List<String> sortedAlphaIds =
-//                mapProductCorrByAlphaId.entrySet()
-//                        .stream()
-//                        .sorted(Map.Entry.comparingByValue()) // ASC
-//                        .map(Map.Entry::getKey)
-//                        .collect(Collectors.toList());
-//
-//        for (String alphaId : sortedAlphaIds) {
-//            submitAlpha(alphaId);
-//        }
-
-//        mapProductCorrByAlphaId.forEach((k, v) ->
-//                System.out.println("Alpha: " + k + ", Product corr = " + v)
-//        );
         }
     }
 }
