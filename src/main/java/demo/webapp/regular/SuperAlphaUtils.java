@@ -50,9 +50,6 @@ public class SuperAlphaUtils {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .GET()
-                    .header("accept", "application/json;version=2.0")
-                    .header("User-Agent",
-                            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
                     .header("Referer",
                             "https://platform.worldquantbrain.com/")
                     .header("Cookie", COOKIE)
@@ -129,9 +126,6 @@ public class SuperAlphaUtils {
             HttpRequest request = HttpRequest.newBuilder()
                     .uri(URI.create(url))
                     .GET()
-                    .header("accept", "application/json;version=2.0")
-                    .header("User-Agent",
-                            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
                     .header("Referer",
                             "https://platform.worldquantbrain.com/")
                     .header("Cookie", COOKIE)
@@ -210,12 +204,10 @@ public class SuperAlphaUtils {
                     .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(20))
                     .method("PATCH", HttpRequest.BodyPublishers.ofString(jsonBody))
-                    .header("Accept", "application/json;version=2.0")
                     .header("Content-Type", "application/json")
                     .header("Origin", "https://platform.worldquantbrain.com")
                     .header("Referer", "https://platform.worldquantbrain.com/")
                     .header("Cookie", COOKIE)
-                    .header("User-Agent", "Mozilla/5.0")
                     .build();
 
             HttpResponse<String> response =
@@ -275,12 +267,10 @@ public class SuperAlphaUtils {
                     .uri(URI.create(url))
                     .timeout(Duration.ofSeconds(20))
                     .method("PATCH", HttpRequest.BodyPublishers.ofString(jsonBody))
-                    .header("Accept", "application/json;version=2.0")
                     .header("Content-Type", "application/json")
                     .header("Origin", "https://platform.worldquantbrain.com")
                     .header("Referer", "https://platform.worldquantbrain.com/")
                     .header("Cookie", COOKIE)
-                    .header("User-Agent", "Mozilla/5.0")
                     .build();
 
             HttpResponse<String> response =
@@ -353,11 +343,9 @@ public class SuperAlphaUtils {
         HttpRequest request = HttpRequest.newBuilder()
                 .uri(URI.create(url))
                 .POST(HttpRequest.BodyPublishers.noBody())
-                .header("Accept", "application/json;version=2.0")
                 .header("Content-Type", "application/json")
                 .header("Origin", "https://platform.worldquantbrain.com")
                 .header("Referer", "https://platform.worldquantbrain.com/")
-                .header("User-Agent", "Mozilla/5.0")
                 .header("Cookie", COOKIE)
                 .build();
 
