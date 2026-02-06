@@ -23,6 +23,10 @@ public class WebServer {
 
     public WebServer(int port) throws IOException {
         this.port = port;
+
+        // Initialize log capture before anything else
+        ApiHandler.LogsHandler.initLogCapture();
+
         this.server = HttpServer.create(new InetSocketAddress(port), 0);
 
         // Set up thread pool
@@ -44,6 +48,9 @@ public class WebServer {
         server.createContext("/api/run", new ApiHandler.RunHandler());
         server.createContext("/api/progress", new ApiHandler.ProgressHandler());
         server.createContext("/api/filters", new ApiHandler.FiltersHandler());
+        server.createContext("/api/submit", new ApiHandler.SubmitHandler());
+        server.createContext("/api/logs", new ApiHandler.LogsHandler());
+        server.createContext("/api/logs/stream", new ApiHandler.LogStreamHandler());
     }
 
     public void start() {

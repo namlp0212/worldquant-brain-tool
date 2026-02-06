@@ -159,6 +159,7 @@ public class StaticFileHandler implements HttpHandler {
         .status-running { background: #dbeafe; color: var(--primary); }
         .status-completed { background: #dcfce7; color: var(--success); }
         .status-failed { background: #fee2e2; color: var(--danger); }
+        .status-submitted { background: #fef3c7; color: #d97706; }
 
         .btn {
             display: inline-block;
@@ -502,6 +503,33 @@ public class StaticFileHandler implements HttpHandler {
                 <div class="loading">Loading results...</div>
             </div>
         </div>
+
+        <!-- Logs -->
+        <div class="card" id="logs-card">
+            <h2>Application Logs
+                <span style="margin-left: 15px; font-size: 0.75rem; color: var(--success); font-weight: normal;">● Live</span>
+                <button class="btn btn-sm refresh-btn" onclick="loadLogs()" style="margin-left: 10px;">Reconnect</button>
+            </h2>
+            <div class="tabs">
+                <button class="tab active" onclick="showLogTab('all')">All</button>
+                <button class="tab" onclick="showLogTab('regular')">Regular</button>
+                <button class="tab" onclick="showLogTab('super')">Super</button>
+                <button class="tab" onclick="showLogTab('error')">Errors</button>
+            </div>
+            <div style="margin: 10px 0;">
+                <label style="font-size: 0.85rem;">Initial lines: </label>
+                <select id="log-lines" onchange="loadLogs()" style="padding: 5px; border-radius: 4px; border: 1px solid var(--border);">
+                    <option value="100">100</option>
+                    <option value="200">200</option>
+                    <option value="500" selected>500</option>
+                    <option value="1000">1000</option>
+                </select>
+                <button class="btn btn-sm" onclick="clearLogs()" style="margin-left: 10px;">Clear Display</button>
+            </div>
+            <div id="logs-container" style="background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 6px; font-family: 'Monaco', 'Menlo', monospace; font-size: 12px; max-height: 500px; overflow-y: auto; white-space: pre-wrap; word-break: break-all;">
+                <span style="color: #888;">Connecting to log stream...</span>
+            </div>
+        </div>
     </div>
 
     <script>
@@ -713,18 +741,30 @@ public class StaticFileHandler implements HttpHandler {
                     <span class="info-value">${formatDate(data.lastUpdatedAt)}</span>
                 </div>
 
-                <h3 style="margin: 20px 0 10px; font-size: 1rem;">Alpha Details (${alphaList.length})</h3>
+                ${tab === 'regular' ? `
+                <div style="margin: 20px 0 10px; display: flex; justify-content: space-between; align-items: center;">
+                    <h3 style="font-size: 1rem; margin: 0;">Alpha Details (${alphaList.length})</h3>
+                    <div>
+                        <button class="btn btn-sm" onclick="selectAllSubmittable()">Select All (corr < 0.7)</button>
+                        <button class="btn btn-primary btn-sm" onclick="submitSelectedAlphas()" style="margin-left: 8px;">Submit Selected</button>
+                    </div>
+                </div>
+                ` : `<h3 style="margin: 20px 0 10px; font-size: 1rem;">Alpha Details (${alphaList.length})</h3>`}
                 <div class="progress-list">
                     ${alphaList.length === 0 ? '<p style="color: var(--text-muted);">No alphas processed yet</p>' :
                     alphaList
                         .sort((a, b) => (a.correlation || 999) - (b.correlation || 999))
                         .map(alpha => `
                             <div class="alpha-item">
-                                <div>
+                                <div style="display: flex; align-items: center; gap: 10px;">
+                                    ${tab === 'regular' && alpha.correlation !== null && alpha.correlation < 0.7 && !alpha.submitted ? `
+                                        <input type="checkbox" class="alpha-checkbox" value="${alpha.alphaId}" />
+                                    ` : ''}
                                     <strong>${alpha.alphaId}</strong>
                                     <span class="status-badge status-${alpha.status?.toLowerCase() || 'pending'}" style="margin-left: 10px;">
                                         ${alpha.status || 'PENDING'}
                                     </span>
+                                    ${alpha.submitted ? '<span class="status-badge status-submitted" style="margin-left: 5px;">SUBMITTED</span>' : ''}
                                 </div>
                                 <div class="correlation ${alpha.correlation < 0.7 ? 'corr-good' : 'corr-bad'}">
                                     ${alpha.correlation !== null && alpha.correlation !== undefined ?
@@ -734,6 +774,154 @@ public class StaticFileHandler implements HttpHandler {
                         `).join('')}
                 </div>
             `;
+        }
+
+        // Alpha submission
+        function selectAllSubmittable() {
+            document.querySelectorAll('.alpha-checkbox').forEach(cb => cb.checked = true);
+        }
+
+        async function submitSelectedAlphas() {
+            const checkboxes = document.querySelectorAll('.alpha-checkbox:checked');
+            const alphaIds = Array.from(checkboxes).map(cb => cb.value);
+
+            if (alphaIds.length === 0) {
+                showToast('No alphas selected', 'error');
+                return;
+            }
+
+            if (!confirm(`Submit ${alphaIds.length} alpha(s)?`)) {
+                return;
+            }
+
+            try {
+                showToast(`Submitting ${alphaIds.length} alpha(s)...`, 'success');
+
+                const response = await api('/submit', {
+                    method: 'POST',
+                    body: JSON.stringify({ alphaIds })
+                });
+
+                if (response.success) {
+                    showToast(`Successfully submitted ${response.submitted} alpha(s)`, 'success');
+                } else {
+                    showToast(`Submitted ${response.submitted}, Failed ${response.failed}`, 'error');
+                }
+
+                // Reload results to reflect submission status
+                await loadResults();
+            } catch (error) {
+                showToast('Error submitting alphas: ' + error.message, 'error');
+            }
+        }
+
+        // Logs - Real-time streaming via SSE
+        let currentLogTab = 'all';
+        let logEventSource = null;
+        let logLines = [];
+        const MAX_LOG_DISPLAY = 1000;
+
+        function connectLogStream() {
+            // Close existing connection
+            if (logEventSource) {
+                logEventSource.close();
+            }
+
+            const container = document.getElementById('logs-container');
+            container.innerHTML = '<span style="color: #888;">Connecting to log stream...</span>';
+            logLines = [];
+
+            const initialLines = document.getElementById('log-lines').value;
+            logEventSource = new EventSource(`/api/logs/stream?filter=${currentLogTab}&initial=${initialLines}`);
+
+            logEventSource.onmessage = function(event) {
+                const line = event.data.replace(/\\\\n/g, '\\n');
+                appendLogLine(line);
+            };
+
+            logEventSource.onerror = function(error) {
+                console.error('SSE Error:', error);
+                container.innerHTML += '\\n<span style="color: #f44;">Connection lost. Reconnecting...</span>';
+                // Reconnect after 2 seconds
+                setTimeout(connectLogStream, 2000);
+            };
+
+            logEventSource.onopen = function() {
+                console.log('Log stream connected');
+            };
+        }
+
+        function appendLogLine(line) {
+            const container = document.getElementById('logs-container');
+
+            // First line - clear container
+            if (logLines.length === 0) {
+                container.innerHTML = '';
+            }
+
+            logLines.push(line);
+
+            // Limit displayed lines
+            if (logLines.length > MAX_LOG_DISPLAY) {
+                logLines.shift();
+                // Rebuild display
+                container.innerHTML = logLines.map(l => highlightLog(l)).join('\\n');
+            } else {
+                // Append new line
+                if (logLines.length > 1) {
+                    container.innerHTML += '\\n';
+                }
+                container.innerHTML += highlightLog(line);
+            }
+
+            // Auto-scroll to bottom
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function loadLogs() {
+            connectLogStream();
+        }
+
+        function highlightLog(line) {
+            // Highlight different log levels
+            if (line.includes('ERROR') || line.includes('❌') || line.includes('⛔')) {
+                return '<span style="color: #f44;">' + escapeHtml(line) + '</span>';
+            } else if (line.includes('WARN')) {
+                return '<span style="color: #fa0;">' + escapeHtml(line) + '</span>';
+            } else if (line.includes('✔') || line.includes('SUCCESS')) {
+                return '<span style="color: #4f4;">' + escapeHtml(line) + '</span>';
+            } else if (line.includes('▶') || line.includes('START')) {
+                return '<span style="color: #4af;">' + escapeHtml(line) + '</span>';
+            }
+            return escapeHtml(line);
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        function showLogTab(tab) {
+            currentLogTab = tab;
+
+            // Update tab buttons
+            const logsCard = document.getElementById('logs-card');
+            if (logsCard) {
+                const tabs = logsCard.querySelectorAll('.tab');
+                tabs.forEach(t => t.classList.remove('active'));
+                const tabIndex = { 'all': 0, 'regular': 1, 'super': 2, 'error': 3 }[tab];
+                if (tabs[tabIndex]) tabs[tabIndex].classList.add('active');
+            }
+
+            // Reconnect with new filter
+            connectLogStream();
+        }
+
+        function clearLogs() {
+            logLines = [];
+            const container = document.getElementById('logs-container');
+            container.innerHTML = '<span style="color: #888;">Display cleared. New logs will appear here.</span>';
         }
 
         // Filters
@@ -907,6 +1095,7 @@ public class StaticFileHandler implements HttpHandler {
             loadJobs();
             loadResults();
             loadFilters();
+            loadLogs();
 
             // Auto-refresh jobs every 5 seconds
             setInterval(loadJobs, 5000);

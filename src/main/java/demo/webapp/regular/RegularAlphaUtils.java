@@ -568,8 +568,8 @@ public class RegularAlphaUtils {
 
         sendResultByMail(result.toString());
 
-        // Submit alphas
-        submitPendingAlphas(progress, mapProductCorrByAlphaId);
+        // Auto-submission disabled - user can submit manually via Dashboard UI
+        // submitPendingAlphas(progress, mapProductCorrByAlphaId);
     }
 
     private static void submitPendingAlphas(ProgressTracker progress, Map<String, Double> mapProductCorrByAlphaId)
