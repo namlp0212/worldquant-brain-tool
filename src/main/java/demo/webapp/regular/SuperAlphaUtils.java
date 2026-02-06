@@ -22,6 +22,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import demo.webapp.ConfigLoader;
 import demo.webapp.ProgressTracker;
@@ -412,6 +413,9 @@ public class SuperAlphaUtils {
             // Load cached correlations from progress
             mapProductCorrByAlphaId.putAll(progress.getAllCorrelations());
 
+            // Stop flag when corr < 0.7 is found
+            AtomicBoolean stopFlag = new AtomicBoolean(false);
+
             System.out.println("------------------ START GET LIST ALPHA ID -------------------------");
             List<String> alphaIds = getAlphaIdsByFilter();
             System.out.println("------------------ END GET LIST ALPHA ID -------------------------");
@@ -443,6 +447,11 @@ public class SuperAlphaUtils {
             for (String alphaId : pendingAlphaIds) {
 
                 Future<?> future = executor.submit(() -> {
+                    // Skip if stop flag is set
+                    if (stopFlag.get()) {
+                        return;
+                    }
+
                     try {
                         System.out.println("▶ START alpha " + alphaId
                                 + " | Thread " + Thread.currentThread().getName());
@@ -465,10 +474,27 @@ public class SuperAlphaUtils {
                             System.out.println("Using cached correlation for " + alphaId + ": " + productCorr);
                         }
 
-                        // 3️⃣ set favorite if correlation >= 0.7
-                        if (productCorr != null && productCorr >= ConfigLoader.getMinCorrelation()) {
-                            setFavoriteForAlpha(alphaId);
-                            progressFinal.markFavorited(alphaId);
+                        // 3️⃣ check correlation and handle accordingly
+                        if (productCorr != null) {
+                            if (productCorr < ConfigLoader.getMinCorrelation()) {
+                                // Found low correlation - stop processing and notify
+                                System.err.println("⛔ FOUND LOW CORR alpha " + alphaId + " | corr = " + productCorr);
+
+                                mapProductCorrByAlphaId.put(alphaId, productCorr);
+                                progressFinal.markCompleted(alphaId);
+
+                                String result = "Alpha " + alphaId + " | corr = " + productCorr;
+                                sendFindAlphaResultByMail(result);
+
+                                // Stop other tasks but don't exit server
+                                stopFlag.set(true);
+                                executor.shutdownNow();
+                                return;
+                            } else {
+                                // High correlation - set as favorite
+                                setFavoriteForAlpha(alphaId);
+                                progressFinal.markFavorited(alphaId);
+                            }
                         }
 
                         mapProductCorrByAlphaId.put(alphaId, productCorr);
@@ -523,6 +549,12 @@ public class SuperAlphaUtils {
 
             if (result.length() > 0) {
                 sendFindAlphaResultByMail(result.toString());
+            }
+
+            // Check if low correlation was found -> stop the loop
+            if (stopFlag.get()) {
+                System.out.println("Low correlation alpha found. Stopping Super Alpha processing.");
+                keepRunning = false;
             }
         }
     }
