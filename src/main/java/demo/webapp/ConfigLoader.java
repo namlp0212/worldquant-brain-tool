@@ -211,6 +211,32 @@ public class ConfigLoader {
         return getBoolean("filter.regular.favorite", false);
     }
 
+    // ==================== Super Alpha Filter getters ====================
+
+    public static String getSuperFilterRegion() {
+        return get("filter.super.region", "ASI");
+    }
+
+    public static String getSuperFilterDateFrom() {
+        return get("filter.super.date.from", "2026-01-25T00:00:00-05:00");
+    }
+
+    public static String getSuperFilterDateTo() {
+        return get("filter.super.date.to", "2026-02-07T00:00:00-05:00");
+    }
+
+    public static int getSuperFilterLimit() {
+        return getInt("filter.super.limit", 10);
+    }
+
+    public static String getSuperFilterStatus() {
+        return get("filter.super.status", "UNSUBMITTED%1FIS_FAIL");
+    }
+
+    public static boolean getSuperFilterFavorite() {
+        return getBoolean("filter.super.favorite", false);
+    }
+
     /**
      * Reloads configuration from file. Use after updating config via web interface.
      */

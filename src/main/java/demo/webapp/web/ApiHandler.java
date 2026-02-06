@@ -390,6 +390,17 @@ public class ApiHandler {
 
                     response.set("regular", regularFilters);
 
+                    // Super alpha filters
+                    ObjectNode superFilters = mapper.createObjectNode();
+                    superFilters.put("region", ConfigLoader.getSuperFilterRegion());
+                    superFilters.put("dateFrom", ConfigLoader.getSuperFilterDateFrom());
+                    superFilters.put("dateTo", ConfigLoader.getSuperFilterDateTo());
+                    superFilters.put("limit", ConfigLoader.getSuperFilterLimit());
+                    superFilters.put("status", ConfigLoader.getSuperFilterStatus());
+                    superFilters.put("favorite", ConfigLoader.getSuperFilterFavorite());
+
+                    response.set("super", superFilters);
+
                     // Available regions
                     ArrayNode regionsArray = mapper.createArrayNode();
                     for (String region : REGIONS) {
@@ -422,30 +433,52 @@ public class ApiHandler {
                         }
                     }
 
-                    // Update regular filters
-                    if (json.has("region")) {
-                        props.setProperty("filter.regular.region", json.get("region").asText());
-                    }
-                    if (json.has("dateFrom")) {
-                        props.setProperty("filter.regular.date.from", json.get("dateFrom").asText());
-                    }
-                    if (json.has("dateTo")) {
-                        props.setProperty("filter.regular.date.to", json.get("dateTo").asText());
-                    }
-                    if (json.has("minFitness")) {
-                        props.setProperty("filter.regular.min.fitness", json.get("minFitness").asText());
-                    }
-                    if (json.has("limit")) {
-                        props.setProperty("filter.regular.limit", json.get("limit").asText());
-                    }
-                    if (json.has("status")) {
-                        props.setProperty("filter.regular.status", json.get("status").asText());
-                    }
-                    if (json.has("favorite")) {
-                        props.setProperty("filter.regular.favorite", json.get("favorite").asText());
+                    // Check if this is a super alpha filter update
+                    boolean isSuperFilter = json.has("type") && "super".equals(json.get("type").asText());
+
+                    if (isSuperFilter) {
+                        // Update super alpha filters
+                        if (json.has("region")) {
+                            props.setProperty("filter.super.region", json.get("region").asText());
+                        }
+                        if (json.has("dateFrom")) {
+                            props.setProperty("filter.super.date.from", json.get("dateFrom").asText());
+                        }
+                        if (json.has("dateTo")) {
+                            props.setProperty("filter.super.date.to", json.get("dateTo").asText());
+                        }
+                        if (json.has("limit")) {
+                            props.setProperty("filter.super.limit", json.get("limit").asText());
+                        }
+                        if (json.has("favorite")) {
+                            props.setProperty("filter.super.favorite", json.get("favorite").asText());
+                        }
+                    } else {
+                        // Update regular filters
+                        if (json.has("region")) {
+                            props.setProperty("filter.regular.region", json.get("region").asText());
+                        }
+                        if (json.has("dateFrom")) {
+                            props.setProperty("filter.regular.date.from", json.get("dateFrom").asText());
+                        }
+                        if (json.has("dateTo")) {
+                            props.setProperty("filter.regular.date.to", json.get("dateTo").asText());
+                        }
+                        if (json.has("minFitness")) {
+                            props.setProperty("filter.regular.min.fitness", json.get("minFitness").asText());
+                        }
+                        if (json.has("limit")) {
+                            props.setProperty("filter.regular.limit", json.get("limit").asText());
+                        }
+                        if (json.has("status")) {
+                            props.setProperty("filter.regular.status", json.get("status").asText());
+                        }
+                        if (json.has("favorite")) {
+                            props.setProperty("filter.regular.favorite", json.get("favorite").asText());
+                        }
                     }
 
-                    // Handle custom region
+                    // Handle custom region (only for regular filters)
                     if (json.has("customRegion") && !json.get("customRegion").asText().isBlank()) {
                         String newRegion = json.get("customRegion").asText().trim().toUpperCase();
                         String existingCustom = props.getProperty("filter.custom.regions", "");

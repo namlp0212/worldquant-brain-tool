@@ -455,6 +455,41 @@ public class StaticFileHandler implements HttpHandler {
             </div>
         </div>
 
+        <!-- Super Alpha Filter Settings -->
+        <div class="card">
+            <h2>Super Alpha Filters <button class="btn btn-sm refresh-btn" onclick="loadFilters()">Refresh</button></h2>
+            <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                <div class="form-group">
+                    <label>Region</label>
+                    <select id="super-filter-region" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label>Date From</label>
+                    <input type="datetime-local" id="super-filter-date-from">
+                </div>
+                <div class="form-group">
+                    <label>Date To</label>
+                    <input type="datetime-local" id="super-filter-date-to">
+                </div>
+                <div class="form-group">
+                    <label>Limit (max results)</label>
+                    <input type="number" id="super-filter-limit" min="1" max="100">
+                </div>
+            </div>
+            <div style="margin-top: 10px;">
+                <label style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="super-filter-favorite">
+                    <span>Favorite only</span>
+                </label>
+            </div>
+            <div style="margin-top: 15px;">
+                <button class="btn btn-primary" onclick="saveSuperFilters()">Save Filters</button>
+                <span id="super-filter-status" style="margin-left: 15px; color: var(--text-muted);"></span>
+            </div>
+        </div>
+
         <!-- Results -->
         <div class="card">
             <h2>Historical Results</h2>
@@ -708,7 +743,7 @@ public class StaticFileHandler implements HttpHandler {
             try {
                 filtersData = await api('/filters');
 
-                // Populate region dropdown
+                // Populate region dropdown for Regular Alpha
                 const regionSelect = document.getElementById('filter-region');
                 regionSelect.innerHTML = '';
                 (filtersData.availableRegions || []).forEach(region => {
@@ -721,7 +756,7 @@ public class StaticFileHandler implements HttpHandler {
                     regionSelect.appendChild(option);
                 });
 
-                // Populate other fields
+                // Populate other fields for Regular Alpha
                 const regular = filtersData.regular || {};
 
                 // Convert ISO date to datetime-local format
@@ -739,6 +774,36 @@ public class StaticFileHandler implements HttpHandler {
                 document.getElementById('filter-favorite').checked = regular.favorite || false;
 
                 document.getElementById('filter-status').textContent = '';
+
+                // Populate region dropdown for Super Alpha
+                const superRegionSelect = document.getElementById('super-filter-region');
+                superRegionSelect.innerHTML = '';
+                (filtersData.availableRegions || []).forEach(region => {
+                    const option = document.createElement('option');
+                    option.value = region;
+                    option.textContent = region;
+                    if (region === filtersData.super?.region) {
+                        option.selected = true;
+                    }
+                    superRegionSelect.appendChild(option);
+                });
+
+                // Populate other fields for Super Alpha
+                const superFilters = filtersData.super || {};
+
+                if (superFilters.dateFrom) {
+                    const dateFrom = superFilters.dateFrom.replace(/-05:00$/, '').replace('T', 'T');
+                    document.getElementById('super-filter-date-from').value = dateFrom.substring(0, 16);
+                }
+                if (superFilters.dateTo) {
+                    const dateTo = superFilters.dateTo.replace(/-05:00$/, '').replace('T', 'T');
+                    document.getElementById('super-filter-date-to').value = dateTo.substring(0, 16);
+                }
+
+                document.getElementById('super-filter-limit').value = superFilters.limit || 10;
+                document.getElementById('super-filter-favorite').checked = superFilters.favorite || false;
+
+                document.getElementById('super-filter-status').textContent = '';
 
             } catch (error) {
                 console.error('Error loading filters:', error);
@@ -773,6 +838,42 @@ public class StaticFileHandler implements HttpHandler {
                     statusEl.textContent = 'Saved!';
                     document.getElementById('filter-custom-region').value = '';
                     // Reload to get updated regions
+                    setTimeout(loadFilters, 500);
+                } else {
+                    showToast('Failed to save filters', 'error');
+                    statusEl.textContent = 'Error';
+                }
+            } catch (error) {
+                showToast('Error saving filters', 'error');
+                statusEl.textContent = 'Error';
+            }
+        }
+
+        async function saveSuperFilters() {
+            const statusEl = document.getElementById('super-filter-status');
+            statusEl.textContent = 'Saving...';
+
+            try {
+                const dateFrom = document.getElementById('super-filter-date-from').value;
+                const dateTo = document.getElementById('super-filter-date-to').value;
+
+                const filters = {
+                    type: 'super',
+                    region: document.getElementById('super-filter-region').value,
+                    dateFrom: dateFrom ? dateFrom + ':00-05:00' : '',
+                    dateTo: dateTo ? dateTo + ':00-05:00' : '',
+                    limit: document.getElementById('super-filter-limit').value,
+                    favorite: document.getElementById('super-filter-favorite').checked
+                };
+
+                const data = await api('/filters', {
+                    method: 'POST',
+                    body: JSON.stringify(filters)
+                });
+
+                if (data.success) {
+                    showToast('Super Alpha filters saved successfully', 'success');
+                    statusEl.textContent = 'Saved!';
                     setTimeout(loadFilters, 500);
                 } else {
                     showToast('Failed to save filters', 'error');
