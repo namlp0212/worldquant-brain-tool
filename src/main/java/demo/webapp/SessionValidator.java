@@ -99,8 +99,6 @@ public class SessionValidator {
                 .uri(URI.create(USER_SELF_URL))
                 .timeout(Duration.ofSeconds(20))
                 .GET()
-                .header("Accept", "application/json;version=2.0")
-                .header("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)")
                 .header("Referer", "https://platform.worldquantbrain.com/")
                 .header("Cookie", cookie)
                 .build();
