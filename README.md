@@ -1,20 +1,69 @@
 # WorldQuant Brain Tool
 
-A Java automation tool for managing and processing trading alphas on the WorldQuant Brain platform.
+A Java desktop application for managing and processing trading alphas on the WorldQuant Brain platform.
 
 ## Features
 
+- **Desktop App (JavaFX)** - Native UI with tabs for session, config, filters, jobs, logs, and results
 - **Regular Alpha Processing** - Process regular alphas with configurable filters
 - **Super Alpha Processing** - Process super alphas with correlation monitoring
+- **Mark Failed Alphas** - Auto-mark alphas with FAIL checks as favorite for easy filtering
 - **Session Validation** - Validate session before processing
 - **Resume Capability** - Resume from crashes with progress tracking
 - **Quartz Scheduling** - Schedule jobs with cron expressions or intervals
-- **Web Dashboard** - Monitor jobs, update settings, view results
 
 ## Requirements
 
 - Java 17+
 - Maven 3.6+
+
+---
+
+## Build & Run (after `git pull`)
+
+### Step 1 — First time only: create your config file
+
+```bash
+cp config.properties.example config.properties
+```
+
+Then open `config.properties` and fill in your settings (cookie, email, filters).
+
+### Step 2 — Build the JAR
+
+> **macOS iCloud note:** If your project folder is inside `~/Documents` or `~/Desktop` (iCloud-synced), build from `/tmp` to avoid file-write timeouts:
+
+```bash
+# Recommended (avoids iCloud sync issues on macOS)
+rsync -a --exclude='target/' /path/to/worldquant-brain-tool/ /tmp/wq-build/
+cd /tmp/wq-build
+mvn package -q
+cp target/worldquant-brain-tool-1.0-SNAPSHOT-desktop.jar /path/to/worldquant-brain-tool/
+```
+
+> If your project is **not** in an iCloud-synced folder, you can build directly:
+
+```bash
+cd /path/to/worldquant-brain-tool
+mvn package -q
+```
+
+The fat JAR will be at:
+```
+target/worldquant-brain-tool-1.0-SNAPSHOT-desktop.jar
+```
+
+### Step 3 — Run the desktop app
+
+Place `config.properties` in the **same directory** as the JAR, then run:
+
+```bash
+java -jar worldquant-brain-tool-1.0-SNAPSHOT-desktop.jar
+```
+
+> Make sure Java 17+ is installed: `java -version`
+
+---
 
 ## Quick Start
 
@@ -33,38 +82,29 @@ Get your WorldQuant Brain cookie:
 1. Login to [platform.worldquantbrain.com](https://platform.worldquantbrain.com)
 2. Open browser DevTools (F12) → Network tab
 3. Copy the `Cookie` header from any request
-4. Paste it in `config.properties` under `wq.cookie=`
+4. Paste it in `config.properties` under `wq.cookie=` or update it in the **Session** tab of the desktop app
 
 ### 3. Build the Project
 
 ```bash
-mvn clean compile
+mvn package -q
 ```
 
 ## Running the Application
 
-### Option 1: Web Dashboard (Recommended)
-
-Start the web server and manage everything from your browser:
+### Option 1: Desktop App (Recommended)
 
 ```bash
-mvn exec:java -Dexec.mainClass="demo.webapp.web.WebServer"
+java -jar worldquant-brain-tool-1.0-SNAPSHOT-desktop.jar
 ```
 
-Open: **http://localhost:8080**
-
-Features:
-- View session status
-- Update cookie (no restart needed)
-- Configure filters (region, date range, fitness)
-- Trigger manual job runs
-- Monitor running jobs
-- View historical results
-
-Custom port:
-```bash
-mvn exec:java -Dexec.mainClass="demo.webapp.web.WebServer" -Dexec.args="3000"
-```
+Tabs available:
+- **Session** — View/update cookie, validate session
+- **Config** — General settings and Email/SMTP settings
+- **Filters** — Regular & super alpha filter settings
+- **Jobs** — Run jobs manually, mark failed alphas, view job history
+- **Logs** — Real-time log viewer
+- **Results** — View progress JSON files
 
 ### Option 2: Run Jobs Directly
 
@@ -178,13 +218,13 @@ export WQ_THREAD_POOL_SIZE=5
 src/main/java/demo/webapp/
 ├── ConfigLoader.java          # Configuration management
 ├── Constant.java              # Constants
-├── Main.java                  # Main entry (email test)
 ├── ProgressTracker.java       # Resume capability
 ├── SessionValidator.java      # Session validation
 ├── regular/
 │   ├── RegularAlphaUtils.java
 │   ├── SuperAlphaUtils.java
 │   ├── RegularAlphaForGenSuperAlphaUtils.java
+│   ├── MarkFailedAlphasUtils.java  # Mark FAIL-check alphas as favorite
 │   └── EmailSender.java
 ├── scheduler/
 │   ├── SchedulerApp.java      # Scheduler entry point
@@ -192,8 +232,20 @@ src/main/java/demo/webapp/
 │   ├── RegularAlphaJob.java
 │   ├── SuperAlphaJob.java
 │   └── RegularAlphaForGenSuperJob.java
+├── desktop/
+│   ├── DesktopApp.java        # JavaFX application
+│   ├── DesktopLauncher.java   # JAR entry point
+│   ├── AppState.java          # Shared state & job runner
+│   └── tabs/
+│       ├── SessionTab.java
+│       ├── ConfigTab.java
+│       ├── FiltersTab.java
+│       ├── JobsTab.java
+│       ├── LogsTab.java
+│       ├── ResultsTab.java
+│       └── UiHelper.java
 └── web/
-    ├── WebServer.java         # HTTP server
+    ├── WebServer.java         # HTTP server (legacy)
     ├── ApiHandler.java        # REST API endpoints
     └── StaticFileHandler.java # Web dashboard UI
 ```

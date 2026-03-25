@@ -116,7 +116,8 @@ public class RegularAlphaUtils {
         String url = "https://api.worldquantbrain.com/users/self/alphas" +
                 "?limit=" + limit +
                 "&offset=0" +
-                "&status=" + filterStatus +
+                "&status=UNSUBMITTED%1FIS_FAIL" +
+//                "&status=" + filterStatus +
                 "&dateCreated%3E=" + dateFrom +
                 "&dateCreated%3C" + dateTo +
                 "&type=REGULAR" +

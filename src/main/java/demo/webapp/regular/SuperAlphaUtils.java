@@ -491,6 +491,10 @@ public class SuperAlphaUtils {
                         System.out.println("✔ DONE alpha " + alphaId
                                 + " | corr = " + productCorr);
 
+                    } catch (InterruptedException e) {
+                        // Thread was interrupted by shutdownNow() - exit silently
+                        Thread.currentThread().interrupt();
+                        System.out.println("⏹ INTERRUPTED alpha " + alphaId + " (stopped by another thread)");
                     } catch (Exception e) {
                         System.err.println("❌ ERROR alpha " + alphaId);
                         mapProductCorrByAlphaId.put(alphaId, null);

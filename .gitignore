@@ -44,3 +44,9 @@ config.properties
 ### Progress Files ###
 # Generated during runtime for resume capability
 progress_*.json
+
+### Generated / Binary ###
+*.jar
+dependency-reduced-pom.xml
+spring.log
+cp.txt

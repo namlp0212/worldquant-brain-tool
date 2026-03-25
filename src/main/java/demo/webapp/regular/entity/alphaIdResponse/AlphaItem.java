@@ -2,6 +2,7 @@ package demo.webapp.regular.entity.alphaIdResponse;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonRawValue;
+import com.fasterxml.jackson.databind.JsonNode;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class AlphaItem {
@@ -14,8 +15,8 @@ public class AlphaItem {
     @JsonRawValue
     private String regular;
 
-    @JsonRawValue
-    private String is;
+    // Use JsonNode so Jackson can deserialize the nested object directly
+    private JsonNode is;
 
     @JsonRawValue
     private String classifications;
@@ -27,5 +28,13 @@ public class AlphaItem {
 
     public void setId(String id) {
         this.id = id;
+    }
+
+    public String getIs() {
+        return is != null ? is.toString() : null;
+    }
+
+    public void setIs(JsonNode is) {
+        this.is = is;
     }
 }
