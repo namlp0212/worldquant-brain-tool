@@ -491,6 +491,23 @@ public class StaticFileHandler implements HttpHandler {
             </div>
         </div>
 
+        <!-- Gen-Super Alpha Filter Settings -->
+        <div class="card">
+            <h2>Gen-Super Alpha Filters <button class="btn btn-sm refresh-btn" onclick="loadFilters()">Refresh</button></h2>
+            <div class="grid" style="grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                <div class="form-group">
+                    <label>Region</label>
+                    <select id="gen-super-filter-region" style="width: 100%; padding: 10px; border: 1px solid var(--border); border-radius: 6px;">
+                        <option value="">Loading...</option>
+                    </select>
+                </div>
+            </div>
+            <div style="margin-top: 15px;">
+                <button class="btn btn-primary" onclick="saveGenSuperFilters()">Save Filters</button>
+                <span id="gen-super-filter-status" style="margin-left: 15px; color: var(--text-muted);"></span>
+            </div>
+        </div>
+
         <!-- Results -->
         <div class="card">
             <h2>Historical Results</h2>
@@ -993,6 +1010,21 @@ public class StaticFileHandler implements HttpHandler {
 
                 document.getElementById('super-filter-status').textContent = '';
 
+                // Populate region dropdown for Gen-Super Alpha
+                const genSuperRegionSelect = document.getElementById('gen-super-filter-region');
+                genSuperRegionSelect.innerHTML = '';
+                (filtersData.availableRegions || []).forEach(region => {
+                    const option = document.createElement('option');
+                    option.value = region;
+                    option.textContent = region;
+                    if (region === filtersData.genSuper?.region) {
+                        option.selected = true;
+                    }
+                    genSuperRegionSelect.appendChild(option);
+                });
+
+                document.getElementById('gen-super-filter-status').textContent = '';
+
             } catch (error) {
                 console.error('Error loading filters:', error);
             }
@@ -1061,6 +1093,35 @@ public class StaticFileHandler implements HttpHandler {
 
                 if (data.success) {
                     showToast('Super Alpha filters saved successfully', 'success');
+                    statusEl.textContent = 'Saved!';
+                    setTimeout(loadFilters, 500);
+                } else {
+                    showToast('Failed to save filters', 'error');
+                    statusEl.textContent = 'Error';
+                }
+            } catch (error) {
+                showToast('Error saving filters', 'error');
+                statusEl.textContent = 'Error';
+            }
+        }
+
+        async function saveGenSuperFilters() {
+            const statusEl = document.getElementById('gen-super-filter-status');
+            statusEl.textContent = 'Saving...';
+
+            try {
+                const filters = {
+                    type: 'gen_super',
+                    region: document.getElementById('gen-super-filter-region').value
+                };
+
+                const data = await api('/filters', {
+                    method: 'POST',
+                    body: JSON.stringify(filters)
+                });
+
+                if (data.success) {
+                    showToast('Gen-Super Alpha filters saved successfully', 'success');
                     statusEl.textContent = 'Saved!';
                     setTimeout(loadFilters, 500);
                 } else {

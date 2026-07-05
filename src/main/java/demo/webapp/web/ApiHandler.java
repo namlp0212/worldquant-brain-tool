@@ -370,7 +370,7 @@ public class ApiHandler {
     public static class FiltersHandler implements HttpHandler {
 
         // Predefined region options
-        private static final String[] REGIONS = {"JPN", "USA", "EUR", "ASI", "IND", "CHN", "KOR", "TWN", "GLB"};
+        private static final String[] REGIONS = {"JPN", "USA", "EUR", "ASI", "IND", "CHN", "KOR", "TWN", "MEA", "GLB"};
 
         @Override
         public void handle(HttpExchange exchange) throws IOException {
@@ -401,6 +401,12 @@ public class ApiHandler {
                     superFilters.put("favorite", ConfigLoader.getSuperFilterFavorite());
 
                     response.set("super", superFilters);
+
+                    // Gen-Super alpha filters
+                    ObjectNode genSuperFilters = mapper.createObjectNode();
+                    genSuperFilters.put("region", ConfigLoader.getGenSuperFilterRegion());
+
+                    response.set("genSuper", genSuperFilters);
 
                     // Available regions
                     ArrayNode regionsArray = mapper.createArrayNode();
@@ -434,10 +440,17 @@ public class ApiHandler {
                         }
                     }
 
-                    // Check if this is a super alpha filter update
-                    boolean isSuperFilter = json.has("type") && "super".equals(json.get("type").asText());
+                    // Check filter type: regular (default), super, or gen_super
+                    String filterType = json.has("type") ? json.get("type").asText() : "regular";
+                    boolean isSuperFilter = "super".equals(filterType);
+                    boolean isGenSuperFilter = "gen_super".equals(filterType) || "genSuper".equals(filterType);
 
-                    if (isSuperFilter) {
+                    if (isGenSuperFilter) {
+                        // Update gen-super filters
+                        if (json.has("region")) {
+                            props.setProperty("filter.gen_super.region", json.get("region").asText());
+                        }
+                    } else if (isSuperFilter) {
                         // Update super alpha filters
                         if (json.has("region")) {
                             props.setProperty("filter.super.region", json.get("region").asText());

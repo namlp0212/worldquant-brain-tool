@@ -173,6 +173,7 @@ public final class UiHelper {
             case "RUNNING"   -> "#d97706";
             case "COMPLETED" -> COLOR_SUCCESS;
             case "FAILED"    -> COLOR_DANGER;
+            case "STOPPED"   -> "#6b7280";
             default          -> COLOR_MUTED;
         };
         lbl.setStyle("-fx-background-color: " + color + "22; -fx-text-fill: " + color + ";"

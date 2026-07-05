@@ -237,6 +237,12 @@ public class ConfigLoader {
         return getBoolean("filter.super.favorite", false);
     }
 
+    // ==================== Gen-Super Alpha Filter getters ====================
+
+    public static String getGenSuperFilterRegion() {
+        return get("filter.gen_super.region", "IND");
+    }
+
     /**
      * Reloads configuration from file. Use after updating config via web interface.
      */

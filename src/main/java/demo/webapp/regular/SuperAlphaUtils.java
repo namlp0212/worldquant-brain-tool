@@ -436,7 +436,7 @@ public class SuperAlphaUtils {
 
                 Future<?> future = executor.submit(() -> {
                     // Skip if stop flag is set
-                    if (stopFlag.get()) {
+                    if (stopFlag.get() || demo.webapp.JobControl.isStopRequested()) {
                         return;
                     }
 
@@ -508,13 +508,27 @@ public class SuperAlphaUtils {
 
             // Wait for tasks to complete
             for (Future<?> f : futures) {
+                if (demo.webapp.JobControl.isStopRequested()) {
+                    executor.shutdownNow();
+                    break;
+                }
                 try {
                     f.get();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    executor.shutdownNow();
+                    break;
                 } catch (CancellationException e) {
                     // Cancelled due to shutdownNow
                 } catch (Exception e) {
                     e.printStackTrace();
                 }
+            }
+
+            if (demo.webapp.JobControl.isStopRequested()) {
+                executor.shutdownNow();
+                System.out.println("⏹ Super alpha job stopped by user.");
+                return;
             }
 
             // Shutdown pool

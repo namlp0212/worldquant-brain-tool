@@ -50,3 +50,5 @@ progress_*.json
 dependency-reduced-pom.xml
 spring.log
 cp.txt
+### Serena MCP tool cache ###
+.serena/

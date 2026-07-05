@@ -48,6 +48,10 @@ public class MarkFailedAlphasUtils {
         int skipped = 0;
 
         for (AlphaItem alpha : allAlphas) {
+            if (demo.webapp.JobControl.isStopRequested()) {
+                System.out.println("⏹ Mark-failed job stopped by user.");
+                return;
+            }
             String alphaId = alpha.getId();
             String isJson = alpha.getIs();
 
@@ -121,6 +125,10 @@ public class MarkFailedAlphasUtils {
                 + ", minFitness=" + minFitness);
 
         while (all.size() < MAX_ALPHAS) {
+            if (demo.webapp.JobControl.isStopRequested()) {
+                System.out.println("⏹ Fetch stopped by user.");
+                break;
+            }
             int remaining = MAX_ALPHAS - all.size();
             int limit = Math.min(BATCH_SIZE, remaining);
 

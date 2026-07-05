@@ -61,18 +61,27 @@ public class JobsTab {
         Button runRegularBtn  = successBtn("▶  Run Regular");
         Button runSuperBtn    = primaryBtn("▶  Run Super");
         Button runGenSuperBtn = secondaryBtn("▶  Run Gen-Super");
+        Button stopBtn        = dangerBtn("⏹  Stop Running Jobs");
 
         Label msgLabel = msgLabel();
 
         runRegularBtn.setOnAction(e  -> runJob("regular",   clearCb.isSelected(), msgLabel));
         runSuperBtn.setOnAction(e    -> runJob("super",     clearCb.isSelected(), msgLabel));
         runGenSuperBtn.setOnAction(e -> runJob("gen-super", clearCb.isSelected(), msgLabel));
+        stopBtn.setOnAction(e -> {
+            int n = AppState.stopRunningJobs();
+            if (n == 0) {
+                setMsg(msgLabel, "No running jobs to stop.", false);
+            } else {
+                setMsg(msgLabel, "Stop requested for " + n + " running job(s). Tasks in flight may take a moment to wind down.", true);
+            }
+        });
 
         Button checkSessionBtn = secondaryBtn("Check Session");
         checkSessionBtn.setOnAction(e -> refreshSessionStatus(checkSessionBtn));
         sessionRow.getChildren().add(checkSessionBtn);
 
-        btnRow.getChildren().addAll(runRegularBtn, runSuperBtn, runGenSuperBtn);
+        btnRow.getChildren().addAll(runRegularBtn, runSuperBtn, runGenSuperBtn, stopBtn);
         card.getChildren().addAll(sessionRow, clearCb, btnRow, msgLabel);
 
         return card;

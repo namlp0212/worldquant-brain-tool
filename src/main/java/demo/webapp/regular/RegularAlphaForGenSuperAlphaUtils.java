@@ -103,11 +103,13 @@ public class RegularAlphaForGenSuperAlphaUtils {
 
     public static List<String> getAlphaIdsByFilter() throws IOException, InterruptedException {
 
+        String region = ConfigLoader.getGenSuperFilterRegion();
+
         String url = "https://api.worldquantbrain.com/users/self/alphas" +
                 "?limit=100" +
                 "&offset=100" +
                 "&status!=UNSUBMITTED%1FIS-FAIL" +
-                "&settings.region=IND" +
+                "&settings.region=" + region +
                 "&type=REGULAR" +
                 "&order=is.prodCorrelation" +
                 "&hidden=false";
@@ -353,6 +355,9 @@ public class RegularAlphaForGenSuperAlphaUtils {
 
         for (String alphaId : pendingAlphaIds) {
             Future<?> future = executor.submit(() -> {
+                if (demo.webapp.JobControl.isStopRequested()) {
+                    return;
+                }
                 try {
                     System.out.println("▶ START alpha " + alphaId
                             + " | Thread " + Thread.currentThread().getName());
@@ -370,6 +375,9 @@ public class RegularAlphaForGenSuperAlphaUtils {
 
                     System.out.println("✔ DONE alpha " + alphaId);
 
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    System.out.println("⏹ INTERRUPTED alpha " + alphaId + " (job stopped)");
                 } catch (Exception e) {
                     System.err.println("❌ ERROR alpha " + alphaId);
                     mapProductCorrByAlphaId.put(alphaId, 0.0);
@@ -383,11 +391,27 @@ public class RegularAlphaForGenSuperAlphaUtils {
 
         // Wait for all tasks to complete
         for (Future<?> f : futures) {
+            if (demo.webapp.JobControl.isStopRequested()) {
+                executor.shutdownNow();
+                break;
+            }
             try {
                 f.get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                executor.shutdownNow();
+                break;
+            } catch (java.util.concurrent.CancellationException e) {
+                // Cancelled due to shutdownNow
             } catch (Exception e) {
                 e.printStackTrace();
             }
+        }
+
+        if (demo.webapp.JobControl.isStopRequested()) {
+            executor.shutdownNow();
+            System.out.println("⏹ Gen-super alpha job stopped by user.");
+            return;
         }
 
         // Shutdown thread pool

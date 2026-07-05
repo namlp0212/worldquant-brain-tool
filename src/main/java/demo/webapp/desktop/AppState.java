@@ -39,6 +39,7 @@ public class AppState {
         public final String startedAt;
         public volatile String completedAt;
         public volatile String error;
+        public volatile java.util.concurrent.Future<?> future;
 
         public JobModel(String type) {
             this.id = UUID.randomUUID().toString().substring(0, 8);
@@ -99,7 +100,8 @@ public class AppState {
 
         String[] args = clearProgress ? new String[]{"--clear"} : new String[]{};
 
-        jobExecutor.submit(() -> {
+        job.future = jobExecutor.submit(() -> {
+            demo.webapp.JobControl.reset();
             try {
                 switch (type.toLowerCase()) {
                     case "regular"      -> demo.webapp.regular.RegularAlphaUtils.main(args);
@@ -108,10 +110,17 @@ public class AppState {
                     case "mark-failed"  -> demo.webapp.regular.MarkFailedAlphasUtils.main(args);
                     default -> throw new IllegalArgumentException("Unknown job type: " + type);
                 }
-                job.status = "COMPLETED";
+                job.status = demo.webapp.JobControl.isStopRequested() ? "STOPPED" : "COMPLETED";
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                job.status = "STOPPED";
             } catch (Exception e) {
-                job.status = "FAILED";
-                job.error = e.getMessage();
+                if (demo.webapp.JobControl.isStopRequested()) {
+                    job.status = "STOPPED";
+                } else {
+                    job.status = "FAILED";
+                    job.error = e.getMessage();
+                }
             } finally {
                 job.completedAt = LocalDateTime.now().format(DateTimeFormatter.ofPattern("HH:mm:ss"));
                 if (onComplete != null) Platform.runLater(onComplete);
@@ -119,6 +128,29 @@ public class AppState {
         });
 
         return job;
+    }
+
+    /**
+     * Requests all running jobs to stop: sets the global stop flag and
+     * interrupts the job threads. Returns the number of jobs signalled.
+     */
+    public static int stopRunningJobs() {
+        int count = 0;
+        for (JobModel job : jobs) {
+            if ("RUNNING".equals(job.status)) {
+                count++;
+            }
+        }
+        if (count == 0) return 0;
+
+        demo.webapp.JobControl.requestStop();
+        for (JobModel job : jobs) {
+            if ("RUNNING".equals(job.status) && job.future != null) {
+                job.future.cancel(true);
+            }
+        }
+        addLog("⏹ Stop requested for " + count + " running job(s)...", false);
+        return count;
     }
 
     // ── Shutdown ─────────────────────────────────────────────────────────────

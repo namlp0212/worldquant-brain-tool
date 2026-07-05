@@ -486,6 +486,9 @@ public class RegularAlphaUtils {
 
         for (String alphaId : pendingAlphaIds) {
             Future<?> future = executor.submit(() -> {
+                if (demo.webapp.JobControl.isStopRequested()) {
+                    return;
+                }
                 try {
                     System.out.println("▶ START alpha " + alphaId
                             + " | Thread " + Thread.currentThread().getName());
@@ -521,6 +524,9 @@ public class RegularAlphaUtils {
 
                     progressFinal.markCompleted(alphaId);
 
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    System.out.println("⏹ INTERRUPTED alpha " + alphaId + " (job stopped)");
                 } catch (Exception e) {
                     System.err.println("❌ ERROR alpha " + alphaId);
                     mapProductCorrByAlphaId.put(alphaId, null);
@@ -534,11 +540,27 @@ public class RegularAlphaUtils {
 
         // Wait for all tasks to complete
         for (Future<?> f : futures) {
+            if (demo.webapp.JobControl.isStopRequested()) {
+                executor.shutdownNow();
+                break;
+            }
             try {
                 f.get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                executor.shutdownNow();
+                break;
+            } catch (java.util.concurrent.CancellationException e) {
+                // Cancelled due to shutdownNow
             } catch (Exception e) {
                 e.printStackTrace();
             }
+        }
+
+        if (demo.webapp.JobControl.isStopRequested()) {
+            executor.shutdownNow();
+            System.out.println("⏹ Regular alpha job stopped by user.");
+            return;
         }
 
         // Shutdown thread pool

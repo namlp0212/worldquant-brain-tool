@@ -16,7 +16,7 @@ import static demo.webapp.desktop.tabs.UiHelper.*;
 
 public class FiltersTab {
 
-    private static final String[] REGIONS = {"JPN", "USA", "EUR", "ASI", "IND", "CHN", "KOR", "TWN", "GLB"};
+    private static final String[] REGIONS = {"JPN", "USA", "EUR", "ASI", "IND", "CHN", "KOR", "TWN", "MEA", "GLB"};
     private static final String[] STATUSES = {
         "UNSUBMITTED%1FIS_FAIL",
         "UNSUBMITTED",
@@ -36,7 +36,8 @@ public class FiltersTab {
         root.getChildren().addAll(
             pageTitle("Alpha Filter Settings"),
             buildRegularCard(),
-            buildSuperCard()
+            buildSuperCard(),
+            buildGenSuperCard()
         );
         return root;
     }
@@ -136,6 +137,28 @@ public class FiltersTab {
             {"filter.super.limit",     limitField.getText()},
             {"filter.super.status",    statusCb.getValue()},
             {"filter.super.favorite",  String.valueOf(favoriteCb.isSelected())}
+        }, msg, saveBtn));
+
+        card.getChildren().addAll(grid, saveBtn, msg);
+        return card;
+    }
+
+    // ── Gen-Super filters ───────────────────────────────────────────────────
+
+    private VBox buildGenSuperCard() {
+        VBox card = card("Gen-Super Alpha Filters");
+
+        ComboBox<String> regionCb = combo();
+        regionCb.getItems().addAll(REGIONS);
+        regionCb.setValue(ConfigLoader.getGenSuperFilterRegion());
+
+        GridPane grid = formGrid();
+        formRow(grid, "Region:", regionCb, 0);
+
+        Label msg = msgLabel();
+        Button saveBtn = primaryBtn("Save Gen-Super Filters");
+        saveBtn.setOnAction(e -> save(new String[][]{
+            {"filter.gen_super.region", regionCb.getValue()}
         }, msg, saveBtn));
 
         card.getChildren().addAll(grid, saveBtn, msg);
