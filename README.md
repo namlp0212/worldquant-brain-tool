@@ -1,292 +1,143 @@
 # WorldQuant Brain Tool
 
-A Java desktop application for managing and processing trading alphas on the WorldQuant Brain platform.
+Công cụ Java (JavaFX desktop) tự động xử lý alpha trên nền tảng [WorldQuant Brain](https://platform.worldquantbrain.com): kiểm tra prod correlation, đặt tên, đánh dấu favorite, gửi mail thông báo và theo dõi tiến độ để chạy tiếp sau khi bị dừng.
 
-## Features
+## 1. Yêu cầu
 
-- **Desktop App (JavaFX)** - Native UI with tabs for session, config, filters, jobs, logs, and results
-- **Regular Alpha Processing** - Process regular alphas with configurable filters
-- **Super Alpha Processing** - Process super alphas with correlation monitoring
-- **Mark Failed Alphas** - Auto-mark alphas with FAIL checks as favorite for easy filtering
-- **Session Validation** - Validate session before processing
-- **Resume Capability** - Resume from crashes with progress tracking
-- **Quartz Scheduling** - Schedule jobs with cron expressions or intervals
-
-## Requirements
-
-- Java 17+
+- Java 17+ (`java -version` để kiểm tra)
 - Maven 3.6+
 
----
-
-## Build & Run (after `git pull`)
-
-### Step 1 — First time only: create your config file
+## 2. Cấu hình (bắt buộc trước khi chạy)
 
 ```bash
 cp config.properties.example config.properties
 ```
 
-Then open `config.properties` and fill in your settings (cookie, email, filters).
+Mở `config.properties` và điền:
 
-### Step 2 — Build the JAR
+| Nhóm | Key chính | Ý nghĩa |
+|------|-----------|---------|
+| Cookie | `wq.cookie` | Cookie đăng nhập WorldQuant Brain (bắt buộc) |
+| Email | `smtp.*`, `email.recipient` | Gửi mail khi tìm được alpha đạt yêu cầu |
+| Xử lý | `thread.pool.size` | Số luồng chạy song song (nên để 2–3) |
+| Ngưỡng | `alpha.min.correlation` | Ngưỡng corr để phân loại alpha (mặc định 0.7) |
+| Filter | `filter.regular.*`, `filter.super.*` | Region, khoảng ngày, limit… để lọc alpha |
 
-> **macOS iCloud note:** If your project folder is inside `~/Documents` or `~/Desktop` (iCloud-synced), build from `/tmp` to avoid file-write timeouts:
+**Cách lấy cookie:** đăng nhập platform.worldquantbrain.com → F12 → tab Network → copy header `Cookie` của request bất kỳ → dán vào `wq.cookie` (hoặc cập nhật trong tab **Session** của app).
 
-```bash
-# Recommended (avoids iCloud sync issues on macOS)
-rsync -a --exclude='target/' /path/to/worldquant-brain-tool/ /tmp/wq-build/
-cd /tmp/wq-build
-mvn package -q
-cp target/worldquant-brain-tool-1.0-SNAPSHOT-desktop.jar /path/to/worldquant-brain-tool/
-```
-
-> If your project is **not** in an iCloud-synced folder, you can build directly:
+## 3. Build file JAR
 
 ```bash
-cd /path/to/worldquant-brain-tool
 mvn package -q
 ```
 
-The fat JAR will be at:
-```
-target/worldquant-brain-tool-1.0-SNAPSHOT-desktop.jar
-```
+JAR nằm tại: `target/worldquant-brain-tool-1.0-SNAPSHOT-desktop.jar`
 
-### Step 3 — Run the desktop app
+> **Lưu ý macOS:** nếu project nằm trong thư mục đồng bộ iCloud (`~/Documents`, `~/Desktop`), copy project ra `/tmp` rồi build để tránh lỗi ghi file:
+> ```bash
+> rsync -a --exclude='target/' ./ /tmp/wq-build/
+> cd /tmp/wq-build && mvn package -q
+> ```
 
-Place `config.properties` in the **same directory** as the JAR, then run:
+## 4. Chạy ứng dụng
+
+### Cách 1 — Desktop app (khuyên dùng)
+
+Đặt `config.properties` cùng thư mục với JAR, rồi:
 
 ```bash
 java -jar worldquant-brain-tool-1.0-SNAPSHOT-desktop.jar
 ```
 
-> Make sure Java 17+ is installed: `java -version`
+Các tab: **Session** (cookie, kiểm tra phiên) · **Config** (cấu hình chung, email) · **Filters** (bộ lọc alpha) · **Jobs** (chạy/dừng tiến trình) · **Logs** (log realtime) · **Results** (tiến độ đã lưu).
 
----
-
-## Quick Start
-
-### 1. Setup Configuration
+### Cách 2 — Chạy tiến trình trực tiếp bằng Maven
 
 ```bash
-# Copy the example config
-cp config.properties.example config.properties
-
-# Edit config.properties with your settings
-```
-
-### 2. Configure Your Cookie
-
-Get your WorldQuant Brain cookie:
-1. Login to [platform.worldquantbrain.com](https://platform.worldquantbrain.com)
-2. Open browser DevTools (F12) → Network tab
-3. Copy the `Cookie` header from any request
-4. Paste it in `config.properties` under `wq.cookie=` or update it in the **Session** tab of the desktop app
-
-### 3. Build the Project
-
-```bash
-mvn package -q
-```
-
-## Running the Application
-
-### Option 1: Desktop App (Recommended)
-
-```bash
-java -jar worldquant-brain-tool-1.0-SNAPSHOT-desktop.jar
-```
-
-Tabs available:
-- **Session** — View/update cookie, validate session
-- **Config** — General settings and Email/SMTP settings
-- **Filters** — Regular & super alpha filter settings
-- **Jobs** — Run jobs manually, mark failed alphas, view job history
-- **Logs** — Real-time log viewer
-- **Results** — View progress JSON files
-
-### Option 2: Run Jobs Directly
-
-**Regular Alpha Processing:**
-```bash
+# Regular Alpha
 mvn exec:java -Dexec.mainClass="demo.webapp.regular.RegularAlphaUtils"
-```
 
-**Super Alpha Processing:**
-```bash
+# Super Alpha
 mvn exec:java -Dexec.mainClass="demo.webapp.regular.SuperAlphaUtils"
-```
 
-**Regular Alpha for Gen Super:**
-```bash
+# Regular for Gen Super
 mvn exec:java -Dexec.mainClass="demo.webapp.regular.RegularAlphaForGenSuperAlphaUtils"
+
+# Mark Failed Alphas
+mvn exec:java -Dexec.mainClass="demo.webapp.regular.MarkFailedAlphasUtils"
+
+# Xóa tiến độ cũ, chạy lại từ đầu: thêm -Dexec.args="--clear"
 ```
 
-**Clear progress and start fresh:**
+### Cách 3 — Chạy theo lịch (Quartz)
+
 ```bash
-mvn exec:java -Dexec.mainClass="demo.webapp.regular.RegularAlphaUtils" -Dexec.args="--clear"
-```
-
-### Option 3: Scheduled Jobs (Quartz)
-
-**Start scheduler with config from properties:**
-```bash
-mvn exec:java -Dexec.mainClass="demo.webapp.scheduler.SchedulerApp"
-```
-
-**Interactive mode:**
-```bash
-mvn exec:java -Dexec.mainClass="demo.webapp.scheduler.SchedulerApp" -Dexec.args="--interactive"
-```
-
-**Command line scheduling:**
-```bash
-# Run Regular every 60 minutes
-mvn exec:java -Dexec.mainClass="demo.webapp.scheduler.SchedulerApp" -Dexec.args="--regular 60"
-
-# Run Super at 8 AM daily
-mvn exec:java -Dexec.mainClass="demo.webapp.scheduler.SchedulerApp" -Dexec.args='--super "0 0 8 * * ?"'
-
-# Multiple jobs
+# Regular mỗi 60 phút, Super mỗi 120 phút
 mvn exec:java -Dexec.mainClass="demo.webapp.scheduler.SchedulerApp" -Dexec.args="--regular 60 --super 120"
+
+# Super theo cron (8h sáng hằng ngày)
+mvn exec:java -Dexec.mainClass="demo.webapp.scheduler.SchedulerApp" -Dexec.args='--super "0 0 8 * * ?"'
 ```
 
-### Option 4: Session Validation Only
+## 5. Các tiến trình và cơ chế hoạt động
 
-```bash
-mvn exec:java -Dexec.mainClass="demo.webapp.SessionValidator"
-```
+### Regular Alpha (`RegularAlphaUtils`)
 
-## Configuration
+Xử lý các alpha REGULAR **chưa submit**:
 
-### config.properties
+1. Lấy danh sách alpha theo filter (region, ngày tạo, fitness…).
+2. Với mỗi alpha (chạy song song theo thread pool):
+   - Đặt tên alpha = chính alpha ID.
+   - Gọi API lấy **prod correlation** (retry đến khi API trả kết quả).
+   - Nếu corr ≥ ngưỡng (`alpha.min.correlation`) → đánh dấu **favorite** (corr cao = trùng với alpha đã có, không nên submit).
+3. Alpha có corr **thấp** là ứng viên tốt — submit thủ công qua tab Jobs (auto-submit đã tắt).
 
-```properties
-# WorldQuant Brain API Cookie (required)
-wq.cookie=YOUR_COOKIE_HERE
+### Super Alpha (`SuperAlphaUtils`)
 
-# Email Configuration
-smtp.host=smtp.gmail.com
-smtp.port=587
-smtp.username=your-email@gmail.com
-smtp.password=your-app-password
-email.recipient=recipient@example.com
+Quét các alpha SUPER, mục tiêu là **tìm alpha có corr thấp**:
 
-# Thread Pool
-thread.pool.size=3
+- Kiểm tra prod correlation từng alpha như trên.
+- Nếu tìm được alpha có **corr < ngưỡng** → **gửi email thông báo và dừng** toàn bộ tiến trình (đã tìm được cái cần tìm).
+- Corr cao → đánh favorite rồi xử lý tiếp; hết danh sách thì lặp lại vòng mới.
 
-# Alpha Filter Configuration
-alpha.min.correlation=0.7
-alpha.min.fitness=1.3
+### Regular for Gen Super (`RegularAlphaForGenSuperAlphaUtils`)
 
-# Regular Alpha Filters (configurable via web)
-filter.regular.region=JPN
-filter.regular.date.from=2026-01-29T00:00:00-05:00
-filter.regular.date.to=2026-02-07T00:00:00-05:00
-filter.regular.min.fitness=1.0
-filter.regular.limit=5
+Chuẩn bị nguyên liệu để tạo super alpha: lấy các alpha REGULAR **đã submit** (sắp theo prod correlation) và đặt tên = alpha ID, giúp dễ chọn khi ghép super alpha trên platform.
 
-# Scheduler (optional)
-scheduler.regular.cron=0 0 8 * * ?
-scheduler.super.interval.minutes=120
-```
+### Mark Failed Alphas (`MarkFailedAlphasUtils`)
 
-### Environment Variables
+Quét các alpha chưa submit có check **FAIL** và đánh dấu **favorite** để dễ lọc/loại bỏ trên platform.
 
-Override any config with environment variables:
+## 6. Cơ chế chung
 
-```bash
-export WQ_COOKIE="your-cookie-here"
-export WQ_SMTP_PASSWORD="your-password"
-export WQ_THREAD_POOL_SIZE=5
-```
+- **Kiểm tra phiên:** mọi tiến trình gọi `SessionValidator` trước khi chạy — cookie hết hạn thì dừng ngay và báo lỗi.
+- **Lưu tiến độ (resume):** mỗi bước hoàn thành của từng alpha được ghi vào file JSON (`progress_regular.json`, `progress_super.json`, `progress_regular_gen_super.json`). Bị crash/dừng giữa chừng → chạy lại là tiếp tục đúng chỗ cũ, bước đã làm sẽ bỏ qua. Dùng `--clear` để làm lại từ đầu.
+- **Chạy song song:** dùng thread pool (`thread.pool.size`), mỗi alpha là một task độc lập.
+- **Chống rate-limit:** gặp HTTP 429 sẽ tự chờ và retry (exponential backoff).
+- **Dừng an toàn:** nút Stop trong app đặt cờ `JobControl` — các task đang chờ sẽ thoát, tiến độ vẫn được lưu.
 
-## Cron Expression Examples
+## 7. Xử lý sự cố
 
-| Expression | Description |
-|------------|-------------|
-| `0 0 8 * * ?` | Every day at 8:00 AM |
-| `0 0 8,20 * * ?` | Every day at 8 AM and 8 PM |
-| `0 0/30 * * * ?` | Every 30 minutes |
-| `0 0 * * * ?` | Every hour |
-| `0 0 8 ? * MON-FRI` | Weekdays at 8:00 AM |
+| Vấn đề | Cách xử lý |
+|--------|-----------|
+| Session invalid | Đăng nhập lại, copy cookie mới, cập nhật tab Session hoặc `config.properties` |
+| Bị rate limit (429) | Giảm `thread.pool.size` xuống 2–3 |
+| Job không chạy | Kiểm tra session hợp lệ, filter có trả về alpha không, xem tab Logs |
+| Muốn chạy lại từ đầu | Chạy với `--clear` hoặc xóa file `progress_*.json` |
 
-## Project Structure
+## Cấu trúc mã nguồn
 
 ```
 src/main/java/demo/webapp/
-├── ConfigLoader.java          # Configuration management
-├── Constant.java              # Constants
-├── ProgressTracker.java       # Resume capability
-├── SessionValidator.java      # Session validation
-├── regular/
-│   ├── RegularAlphaUtils.java
-│   ├── SuperAlphaUtils.java
-│   ├── RegularAlphaForGenSuperAlphaUtils.java
-│   ├── MarkFailedAlphasUtils.java  # Mark FAIL-check alphas as favorite
-│   └── EmailSender.java
-├── scheduler/
-│   ├── SchedulerApp.java      # Scheduler entry point
-│   ├── SchedulerManager.java  # Quartz configuration
-│   ├── RegularAlphaJob.java
-│   ├── SuperAlphaJob.java
-│   └── RegularAlphaForGenSuperJob.java
-├── desktop/
-│   ├── DesktopApp.java        # JavaFX application
-│   ├── DesktopLauncher.java   # JAR entry point
-│   ├── AppState.java          # Shared state & job runner
-│   └── tabs/
-│       ├── SessionTab.java
-│       ├── ConfigTab.java
-│       ├── FiltersTab.java
-│       ├── JobsTab.java
-│       ├── LogsTab.java
-│       ├── ResultsTab.java
-│       └── UiHelper.java
-└── web/
-    ├── WebServer.java         # HTTP server (legacy)
-    ├── ApiHandler.java        # REST API endpoints
-    └── StaticFileHandler.java # Web dashboard UI
+├── ConfigLoader.java        # Đọc config.properties + biến môi trường
+├── SessionValidator.java    # Kiểm tra cookie/phiên
+├── ProgressTracker.java     # Lưu & khôi phục tiến độ (JSON)
+├── JobControl.java          # Cờ dừng tiến trình
+├── regular/                 # 4 tiến trình chính + gửi email
+├── scheduler/               # Chạy theo lịch (Quartz)
+├── desktop/                 # App JavaFX (entry point: DesktopLauncher)
+└── web/                     # HTTP server + REST API (legacy)
 ```
-
-## Progress Files
-
-Progress is saved to JSON files for resume capability:
-
-- `progress_regular.json` - Regular alpha progress
-- `progress_super.json` - Super alpha progress
-- `progress_regular_gen_super.json` - Gen super progress
-
-These files are automatically created and updated during processing.
-
-## API Endpoints (Web Dashboard)
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/api/session` | GET | Get session status |
-| `/api/session` | POST | Update cookie |
-| `/api/filters` | GET | Get filter settings |
-| `/api/filters` | POST | Update filters |
-| `/api/jobs` | GET | List running jobs |
-| `/api/run` | POST | Trigger manual run |
-| `/api/results` | GET | Get historical results |
-
-## Troubleshooting
-
-### Session Invalid
-1. Login to WorldQuant Brain in your browser
-2. Copy the fresh cookie from DevTools
-3. Update via web dashboard or config.properties
-
-### Rate Limited (429)
-- Reduce `thread.pool.size` to 2-3
-- Add delays between requests
-
-### Job Not Starting
-- Check session validity first
-- Verify filter settings return results
-- Check console logs for errors
 
 ## License
 
